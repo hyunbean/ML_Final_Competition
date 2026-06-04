@@ -3,7 +3,7 @@
 # 사용:  bash scripts/push_oof.sh "메시지"     (메시지 생략 가능)
 cd "$(dirname "$0")/.." || exit 1
 
-git config user.email "yyhhss0812@gmail.com"
+git config user.email "guszhd95@naver.com"
 git config user.name "hyunbean"
 
 git add artifacts/oof
