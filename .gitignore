@@ -23,3 +23,6 @@ __pycache__/
 .DS_Store
 
 # ↑ artifacts/*.npy (folds) 와 artifacts/oof/*.npy, *.json 은 추적됨(팀 공유 대상)
+
+# OneDrive 임시
+.tmp.driveupload/
