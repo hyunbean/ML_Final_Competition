@@ -1,0 +1,30 @@
+{
+  "cv_auc": 0.7015846087728581,
+  "fold_auc": {
+    "0": 0.7049293792431269,
+    "1": 0.6948595672010487,
+    "2": 0.7021167322040734,
+    "3": 0.6925343852675971,
+    "4": 0.7149658862477447
+  },
+  "seed": 42,
+  "n_folds": 5,
+  "params": {
+    "objective": "binary:logistic",
+    "eval_metric": "auc",
+    "tree_method": "hist",
+    "device": "cuda",
+    "n_estimators": 6000,
+    "learning_rate": 0.03,
+    "max_depth": 6,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "reg_lambda": 1.0,
+    "reg_alpha": 0.0,
+    "min_child_weight": 5,
+    "n_jobs": -1
+  },
+  "feature_set": "full(te+emb+div+grp)",
+  "created_by": "hyunbean",
+  "notes": "XGBoost (cuda)"
+}
