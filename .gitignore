@@ -29,3 +29,6 @@ __pycache__/
 
 # optuna study
 *.db
+
+# AutoGluon 모델 저장(대용량)
+artifacts/ag_fold*/

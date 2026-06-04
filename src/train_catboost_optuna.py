@@ -11,8 +11,16 @@ from . import config as C
 from .features import build_features
 from .oof_io import save_predictions
 
+def _has_gpu():
+    try:
+        import torch
+        return torch.cuda.is_available()
+    except Exception:
+        return False
+
+
 MODEL_NAME = "catboost_optuna"
-TASK = "GPU"
+TASK = "GPU" if _has_gpu() else "CPU"
 N_TRIALS = int(sys.argv[1]) if len(sys.argv) > 1 else 40
 
 
