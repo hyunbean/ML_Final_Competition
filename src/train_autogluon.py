@@ -18,7 +18,7 @@ from .oof_io import save_predictions
 
 MODEL_NAME = "autogluon_full"
 TIME = int(sys.argv[1]) if len(sys.argv) > 1 else 600
-PRESET = "good_quality"
+PRESET = sys.argv[2] if len(sys.argv) > 2 else "good_quality"   # good_quality | best_quality
 
 
 def main():
