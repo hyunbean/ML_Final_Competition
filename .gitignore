@@ -26,3 +26,6 @@ __pycache__/
 
 # OneDrive 임시
 .tmp.driveupload/
+
+# optuna study
+*.db
