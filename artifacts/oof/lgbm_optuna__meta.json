@@ -1,0 +1,25 @@
+{
+  "cv_auc": 0.7053636642071066,
+  "seed": 42,
+  "n_folds": 5,
+  "params": {
+    "objective": "binary",
+    "metric": "auc",
+    "n_jobs": -1,
+    "verbosity": -1,
+    "bagging_freq": 1,
+    "n_estimators": 8000,
+    "learning_rate": 0.013184225720702603,
+    "num_leaves": 81,
+    "max_depth": 8,
+    "min_child_samples": 182,
+    "feature_fraction": 0.4693968178829212,
+    "bagging_fraction": 0.7346773822753696,
+    "lambda_l1": 0.004275473771276995,
+    "lambda_l2": 2.6051834678292467
+  },
+  "n_trials": 60,
+  "feature_set": "full(te+emb+div+grp)",
+  "created_by": "hyunbean",
+  "notes": "LGBM Optuna 60 trials"
+}
