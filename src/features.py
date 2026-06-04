@@ -48,7 +48,7 @@ def _sanitize_columns(df: pd.DataFrame) -> pd.DataFrame:
     (구성비 컬럼에 한글 카테고리명의 특수문자가 섞여 들어오는 문제 해결)"""
     seen, new_cols = {}, []
     for c in df.columns:
-        c2 = re.sub(r'[\[\]{}":,]', "_", str(c))
+        c2 = re.sub(r'[\[\]{}":,<>]', "_", str(c))
         if c2 in seen:
             seen[c2] += 1
             c2 = f"{c2}__{seen[c2]}"
