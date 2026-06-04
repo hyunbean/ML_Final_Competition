@@ -1,0 +1,238 @@
+"""피처 엔지니어링 — 베이스라인 집계 + 구성비 + 다양성/엔트로피 + OOF 타깃인코딩 + W2V 임베딩.
+
+설계 원칙
+- 모든 산출물은 '정규 custid 순서'(folds.py 출력)에 정렬 → 팀 OOF 규격 일치.
+- **타깃인코딩은 OOF(fold-safe)** : val 폴드는 그 폴드를 제외한 train으로만 인코딩, test는 전체 train으로.
+- **임베딩/구성비/다양성은 비지도** : train+test 전체로 만들어도 누수 없음.
+- 무거운 단계(TE/임베딩)는 artifacts/features 에 캐시 → 재실행 시 즉시 로드.
+
+사용:
+  python -m src.folds            # (선행) 정규순서/폴드
+  python -m src.features         # 피처 빌드 + 캐시 (shape 확인)
+  # 코드에서:  from src.features import build_features;  X, y, Xtest = build_features()
+"""
+import json
+import math
+import numpy as np
+import pandas as pd
+
+from . import config as C
+from . import data as D
+
+FEAT_DIR = C.ARTIFACTS / "features"
+FEAT_DIR.mkdir(parents=True, exist_ok=True)
+
+# 어떤 컬럼에 무엇을 적용할지 (카디널리티 고려)
+TE_COLS = ["part_nm", "pc_nm", "brd_nm", "corner_nm"]          # 고카디널리티 → 타깃인코딩
+EMB_COLS = ["corner_nm", "brd_nm", "pc_nm", "part_nm"]          # W2V 임베딩
+COMP_COLS = ["team_nm", "part_nm", "season", "time_zone"]       # 저카디널리티 → 구성비(crosstab)
+DIV_COLS = ["brd_nm", "part_nm", "corner_nm", "time_zone", "str_nm"]  # 다양성/엔트로피
+TE_ALPHA = 20.0   # 베이지안 스무딩 강도
+
+
+# ----------------------------- 공통 -----------------------------
+def _load_canonical():
+    for p in (C.TRAIN_IDS_NPY, C.TEST_IDS_NPY, C.FOLDS_NPY):
+        if not p.exists():
+            raise FileNotFoundError(f"{p.name} 없음 — 먼저 `python -m src.folds` 실행하세요.")
+    train_ids = np.load(C.TRAIN_IDS_NPY, allow_pickle=True)
+    test_ids = np.load(C.TEST_IDS_NPY, allow_pickle=True)
+    folds = np.load(C.FOLDS_NPY)
+    y = pd.read_csv(C.YTRAIN_CSV).set_index(C.ID_COL).reindex(train_ids)[C.TARGET].to_numpy()
+    return train_ids, test_ids, folds, y
+
+
+def _add_time(df: pd.DataFrame) -> pd.DataFrame:
+    df["sales_datetime"] = pd.to_datetime(df["sales_datetime"])
+    df["hour"] = df["sales_datetime"].dt.hour
+    df["month"] = df["sales_datetime"].dt.month
+    season_map = {3: "봄", 4: "봄", 5: "봄", 6: "여름", 7: "여름", 8: "여름",
+                  9: "가을", 10: "가을", 11: "가을", 12: "겨울", 1: "겨울", 2: "겨울"}
+    df["season"] = df["month"].map(season_map)
+    df["time_zone"] = pd.cut(df["hour"], bins=[-1, 11, 14, 17, 24],
+                             labels=["오전", "점심", "오후", "저녁"]).astype(str)
+    return df
+
+
+# ----------------------------- 구성비 -----------------------------
+def _composition(df, col, ids):
+    ct = pd.crosstab(df[C.ID_COL], df[col], normalize="index").add_prefix(f"ratio_{col}_")
+    return ct.reindex(ids).fillna(0.0)
+
+
+# ----------------------------- 다양성/엔트로피/집중도 -----------------------------
+def _diversity(df, col, ids):
+    cc = df.groupby([C.ID_COL, col]).size().rename("n").reset_index()
+    tot = cc.groupby(C.ID_COL)["n"].transform("sum")
+    cc["p"] = cc["n"] / tot
+    cc["plogp"] = -cc["p"] * np.log(cc["p"] + 1e-12)
+    cc["p2"] = cc["p"] ** 2
+    g = cc.groupby(C.ID_COL).agg(
+        **{f"{col}_entropy": ("plogp", "sum"),
+           f"{col}_hhi": ("p2", "sum"),          # Herfindahl 집중도
+           f"{col}_top1": ("p", "max")})
+    return g.reindex(ids).fillna(0.0)
+
+
+# ----------------------------- OOF 타깃인코딩 -----------------------------
+def _cc_counts(df, col):
+    """고객×카테고리 거래 수."""
+    return df.groupby([C.ID_COL, col]).size().rename("cnt").reset_index()
+
+
+def _category_rate(cc, gender, id_set, col, alpha, global_rate):
+    """주어진 train 고객 집합으로 카테고리별 성별 비율(거래수 가중 + 스무딩). Series(idx=카테고리)."""
+    sub = cc[cc[C.ID_COL].isin(id_set)].copy()
+    sub["g"] = sub[C.ID_COL].map(gender)
+    sub["wg"] = sub["cnt"] * sub["g"]
+    grp = sub.groupby(col).agg(w=("cnt", "sum"), wg=("wg", "sum"))
+    return (grp["wg"] + alpha * global_rate) / (grp["w"] + alpha)
+
+
+def _agg_rate(cc, rate, col, global_rate):
+    """고객이 산 카테고리들의 rate를 집계 → 고객별 피처(거래수 가중평균/최대/최소/표준편차)."""
+    sub = cc.copy()
+    sub["r"] = sub[col].map(rate).fillna(global_rate)
+    sub["rc"] = sub["r"] * sub["cnt"]
+    g = sub.groupby(C.ID_COL).agg(rc=("rc", "sum"), c=("cnt", "sum"),
+                                  rmax=("r", "max"), rmin=("r", "min"), rstd=("r", "std"))
+    return pd.DataFrame({
+        f"te_{col}_wmean": g["rc"] / g["c"],
+        f"te_{col}_max": g["rmax"],
+        f"te_{col}_min": g["rmin"],
+        f"te_{col}_std": g["rstd"].fillna(0.0),
+    })
+
+
+def _target_encode(train_df, test_df, col, train_ids, test_ids, folds, y, alpha):
+    gender = pd.Series(y, index=train_ids)
+    global_rate = float(y.mean())
+    cc_tr = _cc_counts(train_df, col)
+    cc_te = _cc_counts(test_df, col)
+
+    # train: OOF (val 폴드는 다른 폴드 train으로만 인코딩)
+    parts = []
+    for f in range(C.N_FOLDS):
+        fit_ids = set(train_ids[folds != f])
+        val_ids = set(train_ids[folds == f])
+        rate = _category_rate(cc_tr, gender, fit_ids, col, alpha, global_rate)
+        parts.append(_agg_rate(cc_tr[cc_tr[C.ID_COL].isin(val_ids)], rate, col, global_rate))
+    train_te = pd.concat(parts).reindex(train_ids).fillna(global_rate)
+
+    # test: 전체 train으로 인코딩
+    rate_full = _category_rate(cc_tr, gender, set(train_ids), col, alpha, global_rate)
+    test_te = _agg_rate(cc_te, rate_full, col, global_rate).reindex(test_ids).fillna(global_rate)
+    return train_te, test_te
+
+
+# ----------------------------- W2V 멀티풀링 임베딩 -----------------------------
+def _w2v_pooled(train_df, test_df, col, train_ids, test_ids, vector_size, window=5, epochs=10, seed=42):
+    from gensim.models import Word2Vec
+
+    cols = [C.ID_COL, "sales_datetime", col]
+    alldf = pd.concat([train_df[cols], test_df[cols]], ignore_index=True)
+    alldf = alldf.sort_values([C.ID_COL, "sales_datetime"])
+    alldf[col] = alldf[col].astype(str)
+    seqs = alldf.groupby(C.ID_COL)[col].apply(list)
+
+    model = Word2Vec(sentences=seqs.tolist(), vector_size=vector_size, window=window,
+                     min_count=1, sg=1, workers=4, epochs=epochs, seed=seed)
+    kv = model.wv
+
+    # idf (문서=고객) — TF-IDF 가중 평균용
+    dfreq = {}
+    for s in seqs:
+        for t in set(s):
+            dfreq[t] = dfreq.get(t, 0) + 1
+    N = len(seqs)
+    idf = {t: math.log(N / (1 + c)) for t, c in dfreq.items()}
+
+    z = np.zeros(vector_size, dtype=np.float32)
+
+    def pool(tokens):
+        idxs = [t for t in tokens if t in kv.key_to_index]
+        if not idxs:
+            return np.concatenate([z, z, z, z])
+        M = np.vstack([kv[t] for t in idxs])
+        w = np.array([idf.get(t, 0.0) for t in idxs], dtype=np.float32)
+        wmean = (M * w[:, None]).sum(0) / (w.sum() + 1e-9) if w.sum() > 0 else M.mean(0)
+        return np.concatenate([M.mean(0), M.max(0), M.std(0), wmean])
+
+    mat = np.vstack(seqs.apply(pool).values).astype(np.float32)
+    names = []
+    for p in ("mean", "max", "std", "tfidf"):
+        names += [f"{col}_w2v_{p}_{i}" for i in range(vector_size)]
+    emb = pd.DataFrame(mat, index=seqs.index, columns=names)
+    return emb.reindex(train_ids).fillna(0.0), emb.reindex(test_ids).fillna(0.0)
+
+
+# ----------------------------- 빌드 -----------------------------
+def build_features(use_te=True, use_emb=True, emb_vector_size=16,
+                   te_cols=TE_COLS, emb_cols=EMB_COLS, alpha=TE_ALPHA, cache=True):
+    key = f"feat_te{int(use_te)}_emb{int(use_emb)}_v{emb_vector_size}"
+    f_tr, f_te = FEAT_DIR / f"{key}_train.pkl", FEAT_DIR / f"{key}_test.pkl"
+    train_ids, test_ids, folds, y = _load_canonical()
+
+    if cache and f_tr.exists() and f_te.exists():
+        print(f"[features] 캐시 로드: {key}")
+        return pd.read_pickle(f_tr), y, pd.read_pickle(f_te)
+
+    tr, te, _ = D.load_raw()
+    tr = _add_time(tr)
+    te = _add_time(te)
+
+    blocks_tr, blocks_te = [], []
+
+    # 1) 베이스라인 집계
+    blocks_tr.append(D.make_baseline_features(tr).reindex(train_ids))
+    blocks_te.append(D.make_baseline_features(te).reindex(test_ids))
+    print("[features] baseline 집계 완료")
+
+    # 2) 구성비
+    for col in COMP_COLS:
+        blocks_tr.append(_composition(tr, col, train_ids))
+        blocks_te.append(_composition(te, col, test_ids))
+    print("[features] 구성비 완료")
+
+    # 3) 다양성/엔트로피/집중도
+    for col in DIV_COLS:
+        blocks_tr.append(_diversity(tr, col, train_ids))
+        blocks_te.append(_diversity(te, col, test_ids))
+    print("[features] 다양성/엔트로피 완료")
+
+    # 4) OOF 타깃인코딩
+    if use_te:
+        for col in te_cols:
+            a, b = _target_encode(tr, te, col, train_ids, test_ids, folds, y, alpha)
+            blocks_tr.append(a)
+            blocks_te.append(b)
+            print(f"[features] TE(OOF) {col} 완료")
+
+    # 5) W2V 임베딩
+    if use_emb:
+        for col in emb_cols:
+            a, b = _w2v_pooled(tr, te, col, train_ids, test_ids, emb_vector_size)
+            blocks_tr.append(a)
+            blocks_te.append(b)
+            print(f"[features] W2V {col} (dim={emb_vector_size}x4) 완료")
+
+    # train/test 컬럼 정렬 일치시켜 합치기
+    X_train = pd.concat(blocks_tr, axis=1).fillna(0.0)
+    X_test = pd.concat(blocks_te, axis=1).fillna(0.0)
+    X_test = X_test.reindex(columns=X_train.columns, fill_value=0.0)  # 구성비 카테고리 차이 보정
+    X_train = X_train.reset_index(drop=True)
+    X_test = X_test.reset_index(drop=True)
+
+    if cache:
+        X_train.to_pickle(f_tr)
+        X_test.to_pickle(f_te)
+        with open(FEAT_DIR / f"{key}_cols.json", "w", encoding="utf-8") as fjson:
+            json.dump(list(X_train.columns), fjson, ensure_ascii=False, indent=2)
+        print(f"[features] 캐시 저장: {key}")
+
+    return X_train, y, X_test
+
+
+if __name__ == "__main__":
+    X, y, Xtest = build_features()
+    print(f"\nX_train={X.shape}  X_test={Xtest.shape}  features={X.shape[1]}  pos_rate={y.mean():.4f}")

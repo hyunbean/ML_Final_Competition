@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd \"c:\\\\Users\\\\guszh\\\\OneDrive\\\\바탕 화면\\\\ML_Final_Competition\" && grep -c \"DATA_DIR\" starter_code.ipynb; echo \"---mtime---\"; stat -c '%y' starter_code.ipynb)",
+      "Read(//c/Users/guszh/OneDrive/바탕 화면/ML_Final_Competition/**)"
+    ]
+  }
+}

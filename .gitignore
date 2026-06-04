@@ -1,0 +1,25 @@
+# 데이터(대용량) — git에 올리지 않음. 각 머신에 따로 배치하고 KML_DATA로 경로 지정.
+*.csv
+data/
+
+# 체크포인트(임시) / 제출 파일
+artifacts/checkpoints/
+artifacts/submissions/
+
+# 대용량 바이너리(임베딩/모델 캐시)
+*.model
+*.bin
+*.pkl
+
+# 대용량 미디어(1등솔루션 녹화파일 등) — GitHub 100MB 제한
+*.mp4
+*.mov
+*.avi
+
+# 파이썬
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.DS_Store
+
+# ↑ artifacts/*.npy (folds) 와 artifacts/oof/*.npy, *.json 은 추적됨(팀 공유 대상)

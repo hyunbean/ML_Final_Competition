@@ -1,0 +1,15 @@
+# 코어
+numpy
+pandas
+scikit-learn
+scipy
+lightgbm
+# 추가 모델 (Day 2~3)
+catboost
+xgboost
+optuna
+gensim          # word2vec / item2vec
+# 선택 (NN / AutoML)
+# torch
+# pytorch-tabnet
+# autogluon.tabular
