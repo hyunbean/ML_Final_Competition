@@ -1,0 +1,15 @@
+{
+  "cv_auc": 0.705190732794321,
+  "fold_auc": {
+    "0": 0.709672701569537,
+    "1": 0.6987000434815488,
+    "2": 0.7067037598936278,
+    "3": 0.6964471610132598,
+    "4": 0.7167595290722343
+  },
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "full(te+emb+div+grp)",
+  "created_by": "hyunbean",
+  "notes": "AutoGluon best_quality 4000s/fold"
+}
