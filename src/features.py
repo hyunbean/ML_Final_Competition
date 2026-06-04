@@ -26,7 +26,8 @@ FEAT_DIR = C.ARTIFACTS / "features"
 FEAT_DIR.mkdir(parents=True, exist_ok=True)
 
 # 어떤 컬럼에 무엇을 적용할지 (카디널리티 고려)
-TE_COLS = ["part_nm", "pc_nm", "brd_nm", "corner_nm"]          # 고카디널리티 → 타깃인코딩
+TE_COLS = ["part_nm", "pc_nm", "brd_nm", "corner_nm", "buyer_nm", "str_nm", "goodcd"]  # 타깃인코딩
+CROSS_TE = [("part_nm", "time_zone"), ("part_nm", "season")]   # 교차 타깃인코딩(상호작용)
 EMB_COLS = ["corner_nm", "brd_nm", "pc_nm", "part_nm"]          # W2V 임베딩
 COMP_COLS = ["team_nm", "part_nm", "season", "time_zone"]       # 저카디널리티 → 구성비(crosstab)
 DIV_COLS = ["brd_nm", "part_nm", "corner_nm", "time_zone", "str_nm"]  # 다양성/엔트로피
@@ -59,6 +60,23 @@ def _sanitize_columns(df: pd.DataFrame) -> pd.DataFrame:
         new_cols.append(c2)
     df.columns = new_cols
     return df
+
+
+def _amount_stats(df, ids):
+    """금액 분포 통계 (분위/IQR/skew) + 고가·명품 비율 — 도메인 파생 v3."""
+    g = df.groupby(C.ID_COL)["net_amt"]
+    out = pd.DataFrame({
+        "net_q25": g.quantile(0.25),
+        "net_q75": g.quantile(0.75),
+        "net_skew": g.skew(),
+    })
+    out["net_iqr"] = out["net_q75"] - out["net_q25"]
+    thr = df["net_amt"].quantile(0.9)
+    tmp = df.assign(_hv=(df["net_amt"] >= thr).astype(float),
+                    _lux=((df["import_flg"] == 1) & (df["net_amt"] >= thr)).astype(float))
+    out["high_value_ratio"] = tmp.groupby(C.ID_COL)["_hv"].mean()
+    out["luxury_ratio"] = tmp.groupby(C.ID_COL)["_lux"].mean()
+    return out.reindex(ids).fillna(0.0)
 
 
 def _add_time(df: pd.DataFrame) -> pd.DataFrame:
@@ -261,7 +279,7 @@ def _w2v_pooled(train_df, test_df, col, train_ids, test_ids, vector_size, window
 # ----------------------------- 빌드 -----------------------------
 def build_features(use_te=True, use_emb=True, use_groups=True, use_fe2=True, emb_vector_size=16,
                    te_cols=TE_COLS, emb_cols=EMB_COLS, alpha=TE_ALPHA, cache=True):
-    key = f"feat_te{int(use_te)}_emb{int(use_emb)}_g{int(use_groups)}_fe2{int(use_fe2)}_v{emb_vector_size}"
+    key = f"feat_te{int(use_te)}_emb{int(use_emb)}_g{int(use_groups)}_fe2{int(use_fe2)}_v{emb_vector_size}_r3"
     f_tr, f_te = FEAT_DIR / f"{key}_train.pkl", FEAT_DIR / f"{key}_test.pkl"
     train_ids, test_ids, folds, y = _load_canonical()
 
@@ -298,12 +316,21 @@ def build_features(use_te=True, use_emb=True, use_groups=True, use_fe2=True, emb
         blocks_te.append(_semantic_group_features(te, test_ids))
         print("[features] 의미그룹 비중(v2) 완료")
 
-    # 4) OOF 타깃인코딩
+    # 3.6) 금액 분포 통계 (파생 v3)
+    blocks_tr.append(_amount_stats(tr, train_ids))
+    blocks_te.append(_amount_stats(te, test_ids))
+    print("[features] 금액분포 통계(v3) 완료")
+
+    # 4) OOF 타깃인코딩 (+ 교차 TE)
     if use_te:
-        for col in te_cols:
-            a, b = _target_encode(tr, te, col, train_ids, test_ids, folds, y, alpha)
-            blocks_tr.append(a)
-            blocks_te.append(b)
+        for ca, cb in CROSS_TE:                      # 교차 컬럼 생성
+            name = f"x_{ca}_{cb}"
+            tr[name] = tr[ca].astype(str) + "|" + tr[cb].astype(str)
+            te[name] = te[ca].astype(str) + "|" + te[cb].astype(str)
+        for col in list(te_cols) + [f"x_{ca}_{cb}" for ca, cb in CROSS_TE]:
+            tr_te, te_te = _target_encode(tr, te, col, train_ids, test_ids, folds, y, alpha)
+            blocks_tr.append(tr_te)
+            blocks_te.append(te_te)
             print(f"[features] TE(OOF) {col} 완료")
 
     # 5) W2V 임베딩
