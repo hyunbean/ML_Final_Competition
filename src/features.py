@@ -91,6 +91,34 @@ def _diversity(df, col, ids):
     return g.reindex(ids).fillna(0.0)
 
 
+# ----------------------------- 의미그룹 비중 (도메인 파생변수 v2) -----------------------------
+# EDA(카테고리별 성비) 기반. part_nm+pc_nm+corner_nm 텍스트에 키워드 매칭 → 고객별 구매 비중.
+# 방향(어느 성별)은 모델이 학습. 철자변형(캐주얼/캐쥬얼 등) 커버 위해 부분일치 사용.
+SEMANTIC_GROUPS = {
+    "cosmetic":    ["화장품", "향수", "코스메", "뷰티"],
+    "women_young": ["영캐", "여성캐", "미씨", "어덜트캐", "캐릭터캐", "란제리", "영플라자",
+                    "영라이브", "영어덜트", "패션잡화", "악세", "액세", "머플러", "스카프", "영트랜디", "진캐주얼", "진케주얼"],
+    "men":         ["남성정장", "남성의류", "신사", "정장"],
+    "sport_golf":  ["골프", "스포츠"],
+    "kids":        ["아동", "유아", "키즈", "완구", "문구", "레고", "문화용품"],
+    "food":        ["식품", "농산", "생식", "청과", "수산", "축산", "델리"],
+    "living":      ["가정용품", "공산품", "침구", "수예", "주방", "생활", "가전"],
+}
+
+
+def _semantic_group_features(df, ids):
+    cat = (df["part_nm"].astype(str) + " " + df["pc_nm"].astype(str) + " " + df["corner_nm"].astype(str))
+    w = df["net_amt"].clip(lower=0)                       # 금액 가중(환불 제외)
+    gid = df[C.ID_COL]
+    amt_tot = w.groupby(gid).sum()
+    out = {}
+    for name, kws in SEMANTIC_GROUPS.items():
+        flag = cat.str.contains("|".join(map(re.escape, kws)), regex=True).astype(float)
+        out[f"grp_{name}_cnt"] = flag.groupby(gid).mean()                       # 거래수 비중
+        out[f"grp_{name}_amt"] = (flag * w).groupby(gid).sum() / (amt_tot + 1)  # 금액 비중
+    return pd.DataFrame(out).reindex(ids).fillna(0.0)
+
+
 # ----------------------------- OOF 타깃인코딩 -----------------------------
 def _cc_counts(df, col):
     """고객×카테고리 거래 수."""
@@ -184,9 +212,9 @@ def _w2v_pooled(train_df, test_df, col, train_ids, test_ids, vector_size, window
 
 
 # ----------------------------- 빌드 -----------------------------
-def build_features(use_te=True, use_emb=True, emb_vector_size=16,
+def build_features(use_te=True, use_emb=True, use_groups=True, emb_vector_size=16,
                    te_cols=TE_COLS, emb_cols=EMB_COLS, alpha=TE_ALPHA, cache=True):
-    key = f"feat_te{int(use_te)}_emb{int(use_emb)}_v{emb_vector_size}"
+    key = f"feat_te{int(use_te)}_emb{int(use_emb)}_g{int(use_groups)}_v{emb_vector_size}"
     f_tr, f_te = FEAT_DIR / f"{key}_train.pkl", FEAT_DIR / f"{key}_test.pkl"
     train_ids, test_ids, folds, y = _load_canonical()
 
@@ -216,6 +244,12 @@ def build_features(use_te=True, use_emb=True, emb_vector_size=16,
         blocks_tr.append(_diversity(tr, col, train_ids))
         blocks_te.append(_diversity(te, col, test_ids))
     print("[features] 다양성/엔트로피 완료")
+
+    # 3.5) 의미그룹 비중 (도메인 파생변수 v2)
+    if use_groups:
+        blocks_tr.append(_semantic_group_features(tr, train_ids))
+        blocks_te.append(_semantic_group_features(te, test_ids))
+        print("[features] 의미그룹 비중(v2) 완료")
 
     # 4) OOF 타깃인코딩
     if use_te:
