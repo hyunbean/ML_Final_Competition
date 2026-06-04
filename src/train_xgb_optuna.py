@@ -12,6 +12,16 @@ from .features import build_features
 from .oof_io import save_predictions
 
 def _has_gpu():
+    import os
+    import shutil
+    import subprocess
+    if os.path.exists("/dev/nvidia0"):
+        return True
+    if shutil.which("nvidia-smi"):
+        try:
+            return subprocess.run(["nvidia-smi"], capture_output=True).returncode == 0
+        except Exception:
+            pass
     try:
         import torch
         return torch.cuda.is_available()
