@@ -16,6 +16,8 @@ import math
 import re
 import numpy as np
 import pandas as pd
+from scipy.sparse import csr_matrix
+from sklearn.decomposition import TruncatedSVD, LatentDirichletAllocation
 
 from . import config as C
 from . import data as D
@@ -119,6 +121,51 @@ def _semantic_group_features(df, ids):
     return pd.DataFrame(out).reindex(ids).fillna(0.0)
 
 
+# ----------------------------- 행렬분해 SVD/LDA (피처② 임베딩) -----------------------------
+# 고객×카테고리 동시발생 행렬을 분해 → 잠재 성향 축. 비지도(train+test 전체)라 누수 없음.
+FE2_SVD = {"brd_nm": 16, "goodcd": 16, "corner_nm": 12}   # col: n_components
+FE2_LDA = {"brd_nm": 12, "part_nm": 8}                     # col: n_topics
+
+
+def _cust_cat_csr(tr, te, col, all_ids):
+    """고객(all_ids) × 카테고리 카운트 희소행렬 (train+test 합쳐)."""
+    s = pd.concat([tr[[C.ID_COL, col]], te[[C.ID_COL, col]]], ignore_index=True)
+    s[col] = s[col].astype(str)
+    row = pd.Categorical(s[C.ID_COL], categories=all_ids).codes
+    ccode, _ = pd.factorize(s[col])
+    keep = row >= 0
+    n_cols = int(ccode.max()) + 1 if keep.any() else 1
+    return csr_matrix((np.ones(int(keep.sum()), dtype=np.float32), (row[keep], ccode[keep])),
+                      shape=(len(all_ids), n_cols))
+
+
+def _fe2_matrix_factors(tr, te, train_ids, test_ids):
+    all_ids = np.concatenate([train_ids, test_ids])
+    n_tr = len(train_ids)
+    out = {}
+    for col, k in FE2_SVD.items():
+        M = _cust_cat_csr(tr, te, col, all_ids)
+        k_eff = min(k, M.shape[1] - 1)
+        if k_eff < 1:
+            continue
+        comp = TruncatedSVD(n_components=k_eff, random_state=C.SEED).fit_transform(M)
+        for i in range(comp.shape[1]):
+            out[f"svd_{col}_{i}"] = comp[:, i]
+        print(f"[features] SVD {col} (dim={k_eff}) 완료")
+    for col, k in FE2_LDA.items():
+        M = _cust_cat_csr(tr, te, col, all_ids)
+        lda = LatentDirichletAllocation(n_components=k, random_state=C.SEED,
+                                        learning_method="online", max_iter=10, n_jobs=-1)
+        topic = lda.fit_transform(M)
+        for i in range(topic.shape[1]):
+            out[f"lda_{col}_{i}"] = topic[:, i]
+        print(f"[features] LDA {col} (topics={k}) 완료")
+    full = pd.DataFrame(out)
+    tr_b = full.iloc[:n_tr].copy(); tr_b.index = train_ids
+    te_b = full.iloc[n_tr:].copy(); te_b.index = test_ids
+    return tr_b, te_b
+
+
 # ----------------------------- OOF 타깃인코딩 -----------------------------
 def _cc_counts(df, col):
     """고객×카테고리 거래 수."""
@@ -212,9 +259,9 @@ def _w2v_pooled(train_df, test_df, col, train_ids, test_ids, vector_size, window
 
 
 # ----------------------------- 빌드 -----------------------------
-def build_features(use_te=True, use_emb=True, use_groups=True, emb_vector_size=16,
+def build_features(use_te=True, use_emb=True, use_groups=True, use_fe2=True, emb_vector_size=16,
                    te_cols=TE_COLS, emb_cols=EMB_COLS, alpha=TE_ALPHA, cache=True):
-    key = f"feat_te{int(use_te)}_emb{int(use_emb)}_g{int(use_groups)}_v{emb_vector_size}"
+    key = f"feat_te{int(use_te)}_emb{int(use_emb)}_g{int(use_groups)}_fe2{int(use_fe2)}_v{emb_vector_size}"
     f_tr, f_te = FEAT_DIR / f"{key}_train.pkl", FEAT_DIR / f"{key}_test.pkl"
     train_ids, test_ids, folds, y = _load_canonical()
 
@@ -266,6 +313,13 @@ def build_features(use_te=True, use_emb=True, use_groups=True, emb_vector_size=1
             blocks_tr.append(a)
             blocks_te.append(b)
             print(f"[features] W2V {col} (dim={emb_vector_size}x4) 완료")
+
+    # 6) 행렬분해 SVD/LDA (피처②)
+    if use_fe2:
+        a, b = _fe2_matrix_factors(tr, te, train_ids, test_ids)
+        blocks_tr.append(a)
+        blocks_te.append(b)
+        print("[features] SVD/LDA(피처②) 완료")
 
     # train/test 컬럼 정렬 일치시켜 합치기
     X_train = pd.concat(blocks_tr, axis=1).fillna(0.0)
