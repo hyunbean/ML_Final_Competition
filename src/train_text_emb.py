@@ -4,8 +4,14 @@
 → 사전학습 의미지식(립스틱→여성 등)을 활용 = W2V가 못 잡는 신호 + 완전히 다른 representation.
 frozen 임베딩(mean-pool) → 5fold StandardScaler+LogReg 헤드 → OOF. features 캐시 불필요.
 
-실행: pip install transformers → python -m src.folds → python -m src.train_text_emb
+실행: pip install transformers
+     python -m src.folds
+     python -m src.train_text_emb [HF모델명]   # 기본 klue/roberta-base
+예: python -m src.train_text_emb monologg/koelectra-base-v3-discriminator
+    python -m src.train_text_emb klue/bert-base
+모델마다 다른 OOF(text_roberta / text_koelectra ...)로 저장 → 앙상블 다양성.
 """
+import sys
 import numpy as np
 import pandas as pd
 import torch
@@ -17,8 +23,9 @@ from sklearn.metrics import roc_auc_score
 from . import config as C
 from .oof_io import save_predictions
 
-MODEL_NAME = "text_emb"
-HF_MODEL = "klue/roberta-base"
+HF_MODEL = sys.argv[1] if len(sys.argv) > 1 else "klue/roberta-base"
+_TAG = HF_MODEL.split("/")[-1].split("-")[0]      # roberta / koelectra / bert ...
+MODEL_NAME = f"text_{_TAG}"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 TOPK = 40            # 고객당 상위 카테고리 토큰 수
 MAXTOK = 64          # 토크나이저 max_length
