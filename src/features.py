@@ -277,7 +277,7 @@ def _w2v_pooled(train_df, test_df, col, train_ids, test_ids, vector_size, window
 
 
 # ----------------------------- 빌드 -----------------------------
-def build_features(use_te=True, use_emb=True, use_groups=True, use_fe2=True, emb_vector_size=16,
+def build_features(use_te=True, use_emb=True, use_groups=True, use_fe2=False, emb_vector_size=16,
                    te_cols=TE_COLS, emb_cols=EMB_COLS, alpha=TE_ALPHA, cache=True):
     key = f"feat_te{int(use_te)}_emb{int(use_emb)}_g{int(use_groups)}_fe2{int(use_fe2)}_v{emb_vector_size}_r3"
     f_tr, f_te = FEAT_DIR / f"{key}_train.pkl", FEAT_DIR / f"{key}_test.pkl"
