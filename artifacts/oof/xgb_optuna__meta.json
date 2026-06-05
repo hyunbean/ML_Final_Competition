@@ -1,0 +1,24 @@
+{
+  "cv_auc": 0.7063641942643525,
+  "seed": 42,
+  "n_folds": 5,
+  "params": {
+    "objective": "binary:logistic",
+    "eval_metric": "auc",
+    "tree_method": "hist",
+    "device": "cuda",
+    "n_jobs": -1,
+    "n_estimators": 8000,
+    "learning_rate": 0.01087606936097493,
+    "max_depth": 4,
+    "min_child_weight": 8,
+    "subsample": 0.5845221844643103,
+    "colsample_bytree": 0.45050393997642496,
+    "reg_lambda": 18.57637123966932,
+    "reg_alpha": 0.43006260951516034
+  },
+  "n_trials": 40,
+  "feature_set": "full(te+emb+div+grp)",
+  "created_by": "hyunbean",
+  "notes": "XGBoost Optuna 40"
+}
