@@ -79,6 +79,30 @@ def _amount_stats(df, ids):
     return out.reindex(ids).fillna(0.0)
 
 
+def _temporal_dynamics(df, ids):
+    """시간축 행동 동역학 — recency/tenure/활동개월/월빈도/후반지출비중.
+    정적 집계와 달리 '시간 변화' 정보라 새 신호(중복 아님)."""
+    d = df[[C.ID_COL, "sales_datetime", "net_amt"]].copy()
+    d["sales_datetime"] = pd.to_datetime(d["sales_datetime"])
+    ref = d["sales_datetime"].max()
+    first = d.groupby(C.ID_COL)["sales_datetime"].transform("min")
+    last = d.groupby(C.ID_COL)["sales_datetime"].transform("max")
+    span = (last - first).dt.total_seconds()
+    pos = ((d["sales_datetime"] - first).dt.total_seconds() / span.where(span > 0)).fillna(0.5)
+    w = d["net_amt"].clip(lower=0)
+    gid = d[C.ID_COL]
+    g_last = d.groupby(C.ID_COL)["sales_datetime"].max()
+    g_first = d.groupby(C.ID_COL)["sales_datetime"].min()
+    out = pd.DataFrame({
+        "recency_days": (ref - g_last).dt.days.astype(float),
+        "tenure_days": (g_last - g_first).dt.days.astype(float),
+    })
+    out["active_months"] = d.assign(_m=d["sales_datetime"].dt.to_period("M")).groupby(C.ID_COL)["_m"].nunique().astype(float)
+    out["txn_per_month"] = d.groupby(C.ID_COL).size().astype(float) / out["active_months"].clip(lower=1)
+    out["late_spend_ratio"] = (w * (pos >= 0.5)).groupby(gid).sum() / (w.groupby(gid).sum() + 1.0)
+    return out.reindex(ids).fillna(0.0)
+
+
 def _brand_meta_features(df, ids):
     """data/brand_meta.csv (brd_nm + 숫자 속성)를 거래에 join → 고객별 금액가중 평균.
     파일 없으면 None. 외부 지식(브랜드→성별/연령/가격대 등)이라 누수 아님."""
@@ -302,7 +326,7 @@ def _w2v_pooled(train_df, test_df, col, train_ids, test_ids, vector_size, window
 def build_features(use_te=True, use_emb=True, use_groups=True, use_fe2=False, emb_vector_size=16,
                    te_cols=TE_COLS, emb_cols=EMB_COLS, alpha=TE_ALPHA, cache=True):
     bm_on = (C.DATA_DIR / "brand_meta.csv").exists()
-    key = f"feat_te{int(use_te)}_emb{int(use_emb)}_g{int(use_groups)}_fe2{int(use_fe2)}_v{emb_vector_size}_r3{'_bm' if bm_on else ''}"
+    key = f"feat_te{int(use_te)}_emb{int(use_emb)}_g{int(use_groups)}_fe2{int(use_fe2)}_v{emb_vector_size}_r4{'_bm' if bm_on else ''}"
     f_tr, f_te = FEAT_DIR / f"{key}_train.pkl", FEAT_DIR / f"{key}_test.pkl"
     train_ids, test_ids, folds, y = _load_canonical()
 
@@ -343,6 +367,11 @@ def build_features(use_te=True, use_emb=True, use_groups=True, use_fe2=False, em
     blocks_tr.append(_amount_stats(tr, train_ids))
     blocks_te.append(_amount_stats(te, test_ids))
     print("[features] 금액분포 통계(v3) 완료")
+
+    # 3.7) 시간축 행동 동역학 (새 신호)
+    blocks_tr.append(_temporal_dynamics(tr, train_ids))
+    blocks_te.append(_temporal_dynamics(te, test_ids))
+    print("[features] 행동 동역학(시간) 완료")
 
     # 4) OOF 타깃인코딩 (+ 교차 TE)
     if use_te:
