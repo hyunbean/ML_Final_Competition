@@ -275,9 +275,13 @@ def _target_encode(train_df, test_df, col, train_ids, test_ids, folds, y, alpha)
         parts.append(_agg_rate(cc_tr[cc_tr[C.ID_COL].isin(val_ids)], rate, col, global_rate))
     train_te = pd.concat(parts).reindex(train_ids).fillna(global_rate)
 
-    # test: 전체 train으로 인코딩
-    rate_full = _category_rate(cc_tr, gender, set(train_ids), col, alpha, global_rate)
-    test_te = _agg_rate(cc_te, rate_full, col, global_rate).reindex(test_ids).fillna(global_rate)
+    # test: 각 폴드 인코더(80% train)로 만든 TE의 평균 → train OOF와 같은 분포(시프트 완화)
+    test_parts = []
+    for f in range(C.N_FOLDS):
+        fit_ids = set(train_ids[folds != f])
+        rate_f = _category_rate(cc_tr, gender, fit_ids, col, alpha, global_rate)
+        test_parts.append(_agg_rate(cc_te, rate_f, col, global_rate).reindex(test_ids).fillna(global_rate))
+    test_te = sum(test_parts) / C.N_FOLDS
     return train_te, test_te
 
 
@@ -326,7 +330,7 @@ def _w2v_pooled(train_df, test_df, col, train_ids, test_ids, vector_size, window
 def build_features(use_te=True, use_emb=True, use_groups=True, use_fe2=False, emb_vector_size=16,
                    te_cols=TE_COLS, emb_cols=EMB_COLS, alpha=TE_ALPHA, cache=True):
     bm_on = (C.DATA_DIR / "brand_meta.csv").exists()
-    key = f"feat_te{int(use_te)}_emb{int(use_emb)}_g{int(use_groups)}_fe2{int(use_fe2)}_v{emb_vector_size}_r4{'_bm' if bm_on else ''}"
+    key = f"feat_te{int(use_te)}_emb{int(use_emb)}_g{int(use_groups)}_fe2{int(use_fe2)}_v{emb_vector_size}_r5{'_bm' if bm_on else ''}"
     f_tr, f_te = FEAT_DIR / f"{key}_train.pkl", FEAT_DIR / f"{key}_test.pkl"
     train_ids, test_ids, folds, y = _load_canonical()
 
