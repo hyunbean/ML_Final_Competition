@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.7063672351975825,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "fused + pseudo(0.729 teacher)",
+  "created_by": "hyunbean",
+  "notes": "strong-teacher pseudo(11998) on fused our+mega"
+}
