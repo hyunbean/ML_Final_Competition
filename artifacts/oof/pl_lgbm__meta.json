@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.7022947008203839,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "full + pseudo(lgbm_optuna,q0.25)",
+  "created_by": "hyunbean",
+  "notes": "pseudo-labeling: confident 9998 test rows added"
+}
