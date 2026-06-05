@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.6798100667767929,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "transaction-level",
+  "created_by": "hyunbean",
+  "notes": "transaction-level LGBM (native cat), mean-agg per customer"
+}
