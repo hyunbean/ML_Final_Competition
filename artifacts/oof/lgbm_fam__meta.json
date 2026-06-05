@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.7026105429648781,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "full + 가족카드(dispersion/bimodal)",
+  "created_by": "hyunbean",
+  "notes": "family-card noise: per-customer brd_nm log-odds dispersion + bimodality"
+}
