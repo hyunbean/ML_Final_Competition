@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.7120517162848581,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "our376 + mega572 (fold-matched, TE safe)",
+  "created_by": "hyunbean",
+  "notes": "feature-level fusion: 우리 피처 + 김민형 mega(572) LGBM"
+}
