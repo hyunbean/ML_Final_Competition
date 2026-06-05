@@ -37,33 +37,15 @@ def main():
     Xtv = np.nan_to_num(Xtf.values.astype(np.float32), posinf=0, neginf=0)
     print(f"fused {Xv.shape} → 중요도 셀렉션 top{TOPK}")
 
-    # --- 중요도 1: gain (5fold avg) + 2: permutation (fold0) ---
-    tr0, va0 = np.where(folds != 0)[0], np.where(folds == 0)[0]
+    # --- 중요도: gain (5fold avg) — 경량(저RAM, permutation/SHAP는 RAM폭발로 제거) ---
     gain = np.zeros(len(cols))
     for f in range(C.N_FOLDS):
         tr = np.where(folds != f)[0]
         m = lgb.LGBMClassifier(n_estimators=500, learning_rate=0.05, num_leaves=96,
-                               importance_type="gain", n_jobs=-1, verbosity=-1).fit(Xv[tr], y[tr])
+                               importance_type="gain", n_jobs=4, verbosity=-1).fit(Xv[tr], y[tr])
         gain += m.feature_importances_
-    mperm = lgb.LGBMClassifier(n_estimators=500, learning_rate=0.05, num_leaves=96,
-                               n_jobs=-1, verbosity=-1).fit(Xv[tr0], y[tr0])
-    perm = permutation_importance(mperm, Xv[va0], y[va0], n_repeats=2,
-                                  scoring="roc_auc", random_state=C.SEED, n_jobs=-1).importances_mean
-    imp = pd.DataFrame({"col": cols})
-    imp["gain_rank"] = pd.Series(gain).rank()
-    imp["perm_rank"] = pd.Series(perm).rank()
-    try:
-        import shap
-        expl = shap.TreeExplainer(mperm)
-        sv = np.abs(expl.shap_values(Xv[va0])).mean(0)
-        sv = sv[1] if isinstance(sv, list) else sv
-        imp["shap_rank"] = pd.Series(np.ravel(sv)[:len(cols)]).rank()
-        imp["score"] = 0.25 * imp.gain_rank + 0.35 * imp.perm_rank + 0.40 * imp.shap_rank
-        print("3중(gain+perm+SHAP) 셀렉션")
-    except Exception as e:
-        imp["score"] = 0.4 * imp.gain_rank + 0.6 * imp.perm_rank
-        print(f"2중(gain+perm) 셀렉션 (SHAP 스킵: {e})")
-    keep = imp.sort_values("score", ascending=False).head(TOPK).index.to_numpy()
+    keep = np.argsort(-gain)[:TOPK]
+    print(f"gain 중요도 셀렉션 (경량) top{TOPK}")
     Xs, Xts = Xv[:, keep], Xtv[:, keep]
     print(f"선택 {len(keep)}개로 재학습")
 
