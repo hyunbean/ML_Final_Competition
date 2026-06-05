@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.6343974421791494,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "klue/roberta-base fine-tuned on rich text",
+  "created_by": "hyunbean",
+  "notes": "TabLLM-style fine-tune (corner_nm 수량+금액 문장)"
+}
