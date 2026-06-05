@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.7013127367371772,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "DAE(3x1500) hidden + LGBM",
+  "created_by": "hyunbean",
+  "notes": "Denoising AutoEncoder (swap noise + GaussRank) features → LGBM"
+}
