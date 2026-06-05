@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.6639749531932624,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "seq:brd+part+amt",
+  "created_by": "hyunbean",
+  "notes": "Transformer encoder (SASRec-style, maxlen60)"
+}

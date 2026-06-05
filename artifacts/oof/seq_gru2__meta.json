@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.665033153314988,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "seq:brd+part+amt",
+  "created_by": "hyunbean",
+  "notes": "multi-channel Bi-GRU (brd+part+amt, maxlen60)"
+}
