@@ -83,12 +83,22 @@ class CASPR(nn.Module):
         return self.head(h[:, 0]).squeeze(1)
 
 
+@torch.no_grad()
+def _pred(model, X, bs=256):
+    model.eval()
+    out = []
+    for i in range(0, len(X), bs):
+        xb = torch.tensor(X[i:i + bs], device=DEVICE)
+        out.append(torch.sigmoid(model(xb)).cpu().numpy())
+        del xb
+    return np.concatenate(out)
+
+
 def _train(Xtr, ytr, Xva, yva, Xte, vocabs):
     torch.manual_seed(C.SEED)
     dl = torch.utils.data.DataLoader(
         torch.utils.data.TensorDataset(torch.tensor(Xtr), torch.tensor(ytr, dtype=torch.float32)),
         batch_size=BATCH, shuffle=True)
-    Xva_t, Xte_t = torch.tensor(Xva, device=DEVICE), torch.tensor(Xte, device=DEVICE)
     model = CASPR(vocabs).to(DEVICE)
     opt = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-4)
     lossf = nn.BCEWithLogitsLoss()
@@ -98,13 +108,10 @@ def _train(Xtr, ytr, Xva, yva, Xte, vocabs):
         for xb, yb in dl:
             xb, yb = xb.to(DEVICE), yb.to(DEVICE)
             opt.zero_grad(); lossf(model(xb), yb).backward(); opt.step()
-        model.eval()
-        with torch.no_grad():
-            vp = torch.sigmoid(model(Xva_t)).cpu().numpy()
+        vp = _pred(model, Xva)              # 배치 추론(OOM 방지)
         auc = roc_auc_score(yva, vp)
         if auc > best_auc:
-            with torch.no_grad():
-                best_te = torch.sigmoid(model(Xte_t)).cpu().numpy()
+            best_te = _pred(model, Xte)
             best_auc, best_va, wait = auc, vp, 0
         else:
             wait += 1
