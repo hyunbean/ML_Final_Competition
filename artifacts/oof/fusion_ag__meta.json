@@ -1,8 +1,8 @@
 {
-  "cv_auc": 0.7130515478203084,
+  "cv_auc": 0.7124015444033289,
   "seed": 42,
   "n_folds": 5,
   "feature_set": "our376+mega572 AutoGluon",
   "created_by": "hyunbean",
-  "notes": "fusion + AutoGluon best_quality 600s/fold"
+  "notes": "fusion + AutoGluon best_quality 1800s/fold"
 }
