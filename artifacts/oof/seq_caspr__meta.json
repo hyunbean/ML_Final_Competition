@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.6758015521847567,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "seq 7fields CASPR-transformer",
+  "created_by": "hyunbean",
+  "notes": "CASPR-style multi-field tx transformer (maxlen80, 3L)"
+}
