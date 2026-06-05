@@ -79,6 +79,28 @@ def _amount_stats(df, ids):
     return out.reindex(ids).fillna(0.0)
 
 
+def _brand_meta_features(df, ids):
+    """data/brand_meta.csv (brd_nm + 숫자 속성)를 거래에 join → 고객별 금액가중 평균.
+    파일 없으면 None. 외부 지식(브랜드→성별/연령/가격대 등)이라 누수 아님."""
+    path = C.DATA_DIR / "brand_meta.csv"
+    if not path.exists():
+        return None
+    meta = pd.read_csv(path)
+    meta["brd_nm"] = meta["brd_nm"].astype(str)
+    attrs = [c for c in meta.columns if c != "brd_nm"]
+    defaults = {a: float(meta[a].mean()) for a in attrs}
+    m = df[[C.ID_COL, "brd_nm", "net_amt"]].copy()
+    m["brd_nm"] = m["brd_nm"].astype(str)
+    m = m.merge(meta, on="brd_nm", how="left")
+    m["_w"] = m["net_amt"].clip(lower=0) + 1.0
+    gid = m[C.ID_COL]
+    wsum = m["_w"].groupby(gid).sum()
+    out = {}
+    for a in attrs:
+        out[f"bm_{a}"] = (m[a].fillna(defaults[a]) * m["_w"]).groupby(gid).sum() / wsum
+    return pd.DataFrame(out).reindex(ids).fillna(0.0)
+
+
 def _add_time(df: pd.DataFrame) -> pd.DataFrame:
     df["sales_datetime"] = pd.to_datetime(df["sales_datetime"])
     df["hour"] = df["sales_datetime"].dt.hour
@@ -279,7 +301,8 @@ def _w2v_pooled(train_df, test_df, col, train_ids, test_ids, vector_size, window
 # ----------------------------- 빌드 -----------------------------
 def build_features(use_te=True, use_emb=True, use_groups=True, use_fe2=False, emb_vector_size=16,
                    te_cols=TE_COLS, emb_cols=EMB_COLS, alpha=TE_ALPHA, cache=True):
-    key = f"feat_te{int(use_te)}_emb{int(use_emb)}_g{int(use_groups)}_fe2{int(use_fe2)}_v{emb_vector_size}_r3"
+    bm_on = (C.DATA_DIR / "brand_meta.csv").exists()
+    key = f"feat_te{int(use_te)}_emb{int(use_emb)}_g{int(use_groups)}_fe2{int(use_fe2)}_v{emb_vector_size}_r3{'_bm' if bm_on else ''}"
     f_tr, f_te = FEAT_DIR / f"{key}_train.pkl", FEAT_DIR / f"{key}_test.pkl"
     train_ids, test_ids, folds, y = _load_canonical()
 
@@ -347,6 +370,15 @@ def build_features(use_te=True, use_emb=True, use_groups=True, use_fe2=False, em
         blocks_tr.append(a)
         blocks_te.append(b)
         print("[features] SVD/LDA(피처②) 완료")
+
+    # 7) 브랜드 외부 메타데이터 (data/brand_meta.csv 있으면 자동)
+    if bm_on:
+        bm_tr = _brand_meta_features(tr, train_ids)
+        bm_te = _brand_meta_features(te, test_ids)
+        if bm_tr is not None:
+            blocks_tr.append(bm_tr)
+            blocks_te.append(bm_te)
+            print("[features] 브랜드 메타데이터 완료")
 
     # train/test 컬럼 정렬 일치시켜 합치기
     X_train = pd.concat(blocks_tr, axis=1).fillna(0.0)
