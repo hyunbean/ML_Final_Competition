@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.6184637109734035,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "Leiden 브랜드군집(4) 지출비중 LGBM",
+  "created_by": "hyunbean",
+  "notes": "brand co-visitation Leiden cluster share, 단독 OOF (직교 멤버)"
+}
