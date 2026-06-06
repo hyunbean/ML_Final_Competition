@@ -56,6 +56,7 @@ def main():
     print(f"train txns={len(tr):,}  test txns={len(te):,}  feats={len(feats)}  device=CPU")
 
     oof = pd.Series(np.nan, index=train_ids)
+    test_acc = pd.Series(0.0, index=test_ids)            # P1: test도 폴드모델 평균(OOF와 분포 일치)
     for f in range(C.N_FOLDS):
         trn = tr[tr["_fold"] != f]
         val = tr[tr["_fold"] == f]
@@ -64,12 +65,12 @@ def main():
         vp = m.predict_proba(val[feats])[:, 1]
         agg = pd.Series(vp, index=val[C.ID_COL].values).groupby(level=0).mean()
         oof.loc[agg.index] = agg.values
+        tp = m.predict_proba(te[feats])[:, 1]
+        te_agg = pd.Series(tp, index=te[C.ID_COL].values).groupby(level=0).mean().reindex(test_ids).fillna(gender.mean())
+        test_acc += te_agg
         print(f"[fold {f}] cust-AUC={roc_auc_score(gender.reindex(agg.index).values, agg.values):.5f}")
 
-    m = lgb.LGBMClassifier(**PARAMS)
-    m.fit(tr[feats], tr["_g"], categorical_feature=CAT)
-    tp = m.predict_proba(te[feats])[:, 1]
-    test_pred = pd.Series(tp, index=te[C.ID_COL].values).groupby(level=0).mean().reindex(test_ids).fillna(gender.mean())
+    test_pred = test_acc / C.N_FOLDS
 
     oof = oof.reindex(train_ids).fillna(gender.mean())
     cv = float(roc_auc_score(y.values, oof.values))
