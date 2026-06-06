@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.6837579596558601,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "gplearn 수식파생 + top40",
+  "created_by": "hyunbean",
+  "notes": "genetic programming symbolic features"
+}
