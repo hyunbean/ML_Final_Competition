@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.5817329192356075,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "full",
+  "created_by": "hyunbean",
+  "notes": "XGB rank:pairwise (AUC direct)"
+}

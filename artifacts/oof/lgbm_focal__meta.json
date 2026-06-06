@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.6816256194601575,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "full",
+  "created_by": "hyunbean",
+  "notes": "LGBM focal loss (gamma2)"
+}
