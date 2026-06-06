@@ -134,6 +134,36 @@ def _add_transition(df: pd.DataFrame, col: str = "corner_nm") -> pd.DataFrame:
     return df
 
 
+def _relative_price(df, ids):
+    """카테고리/브랜드 '내'에서의 상대가격 분위 — 절대금액 아닌 프리미엄도(같은 화장품도 최고가/입문가)."""
+    d = df[[C.ID_COL, "brd_nm", "pc_nm", "net_amt"]].copy()
+    d["rb"] = d.groupby("brd_nm")["net_amt"].rank(pct=True)
+    d["rp"] = d.groupby("pc_nm")["net_amt"].rank(pct=True)
+    g = d.groupby(C.ID_COL)
+    return pd.DataFrame({"relprice_brd_mean": g["rb"].mean(), "relprice_brd_max": g["rb"].max(),
+                         "relprice_brd_std": g["rb"].std(), "relprice_pc_mean": g["rp"].mean(),
+                         "relprice_pc_max": g["rp"].max()}).reindex(ids).fillna(0.5)
+
+
+def _interarrival(df, ids):
+    """구매 주기(간격) — 방문 규칙성/탐색성(목적형 vs 정기형). recency와 다른 신호."""
+    d = df[[C.ID_COL, "sales_datetime"]].copy()
+    d["dt"] = pd.to_datetime(d["sales_datetime"])
+    d = d.sort_values([C.ID_COL, "dt"])
+    d["gap"] = d.groupby(C.ID_COL)["dt"].diff().dt.total_seconds() / 86400.0
+    g = d.groupby(C.ID_COL)["gap"]
+    return pd.DataFrame({"ia_mean": g.mean(), "ia_std": g.std(), "ia_max": g.max(),
+                         "ia_min": g.min()}).reindex(ids).fillna(0.0)
+
+
+def _buyer_switch(df, ids):
+    """바이어(MD) 전환율 — 같은 MD 반복 vs 전환. 35개뿐이라 안정적 신호."""
+    d = df[[C.ID_COL, "sales_datetime", "buyer_nm"]].copy().sort_values([C.ID_COL, "sales_datetime"])
+    d["prev"] = d.groupby(C.ID_COL)["buyer_nm"].shift(1)
+    d["sw"] = (d["buyer_nm"].astype(str) != d["prev"].astype(str)).astype(float)
+    return d.groupby(C.ID_COL)["sw"].mean().to_frame("buyer_switch_rate").reindex(ids).fillna(0.0)
+
+
 def _add_time(df: pd.DataFrame) -> pd.DataFrame:
     df["sales_datetime"] = pd.to_datetime(df["sales_datetime"])
     df["hour"] = df["sales_datetime"].dt.hour
@@ -428,7 +458,32 @@ def _target_encode(train_df, test_df, col, train_ids, test_ids, folds, y, alpha)
 
 
 # ----------------------------- 계층 TE (잔차 + Bayesian hierarchical shrinkage) -----------------------------
-HIER_TE = [("brd_nm", "pc_nm"), ("goodcd", "brd_nm"), ("corner_nm", "part_nm")]
+HIER_TE = [("brd_nm", "pc_nm"), ("goodcd", "brd_nm"), ("corner_nm", "part_nm"),
+           ("goodcd", "pc_nm"), ("brd_nm", "part_nm")]
+
+# gift-season 윈도우 (month, day_from, day_to) — 데이터 2017-05~2018-04 전 구간 포함
+GIFT_WINDOWS = {"valentine": (2, 1, 14), "whiteday": (3, 1, 14), "xmas": (12, 15, 25),
+                "mayfamily": (5, 1, 15), "newyear": (1, 1, 10)}
+
+
+def _giftseason_features(df, ids):
+    """gift-season 구매 행태 — 선물시즌 지출비중 + 선물성 카테고리(화장품/주얼리/잡화)를
+    선물시즌에 산 비율. 선물구매자(성별 신호 약화) 탐지 → 도메인 신호."""
+    d = df[[C.ID_COL, "sales_datetime", "net_amt", "part_nm", "pc_nm", "corner_nm"]].copy()
+    dt = pd.to_datetime(d["sales_datetime"]); d["mo"] = dt.dt.month; d["dy"] = dt.dt.day
+    w = d["net_amt"].clip(lower=0); gid = d[C.ID_COL]; tot = w.groupby(gid).sum() + 1.0
+    giftcat = (d["part_nm"].astype(str) + d["pc_nm"].astype(str) + d["corner_nm"].astype(str)).str.contains(
+        "화장품|향수|주얼리|보석|시계|핸드백|잡화|상품권", regex=True)
+    out = {}
+    anygift = pd.Series(False, index=d.index)
+    for name, (m, d1, d2) in GIFT_WINDOWS.items():
+        win = (d["mo"] == m) & (d["dy"].between(d1, d2))
+        anygift = anygift | win
+        out[f"gs_{name}_ratio"] = (w * win).groupby(gid).sum() / tot
+    out["gs_anygift_ratio"] = (w * anygift).groupby(gid).sum() / tot
+    out["gs_giftcat_inwin"] = (w * anygift * giftcat.values).groupby(gid).sum() / tot   # 선물시즌×선물카테고리
+    out["gs_giftcat_total"] = (w * giftcat.values).groupby(gid).sum() / tot
+    return pd.DataFrame(out).reindex(ids).fillna(0.0)
 
 
 def _hier_te_oof(tr, te, child, parent, train_ids, test_ids, folds, y, c_up=20.0, c_lo=10.0):
@@ -519,7 +574,7 @@ def _w2v_pooled(train_df, test_df, col, train_ids, test_ids, vector_size, window
 def build_features(use_te=True, use_emb=True, use_groups=True, use_fe2=False, emb_vector_size=16,
                    te_cols=TE_COLS, emb_cols=EMB_COLS, alpha=TE_ALPHA, cache=True):
     bm_on = (C.DATA_DIR / "brand_meta.csv").exists()
-    key = f"feat_te{int(use_te)}_emb{int(use_emb)}_g{int(use_groups)}_fe2{int(use_fe2)}_v{emb_vector_size}_r10{'_bm' if bm_on else ''}"
+    key = f"feat_te{int(use_te)}_emb{int(use_emb)}_g{int(use_groups)}_fe2{int(use_fe2)}_v{emb_vector_size}_r12{'_bm' if bm_on else ''}"
     f_tr, f_te = FEAT_DIR / f"{key}_train.pkl", FEAT_DIR / f"{key}_test.pkl"
     train_ids, test_ids, folds, y = _load_canonical()
 
@@ -581,6 +636,16 @@ def build_features(use_te=True, use_emb=True, use_groups=True, use_fe2=False, em
     blocks_tr.append(_trajectory_features(tr, train_ids))
     blocks_te.append(_trajectory_features(te, test_ids))
     print("[features] trajectory(전후반 변화) 완료")
+
+    # 3.96) gift-season (선물시즌 구매행태 — 도메인 신호)
+    blocks_tr.append(_giftseason_features(tr, train_ids))
+    blocks_te.append(_giftseason_features(te, test_ids))
+    print("[features] gift-season 완료")
+
+    # 3.97) 상대가격분위 + 구매주기 + buyer전환 (r12 — 계획 미시도분)
+    for fn, nm in [(_relative_price, "상대가격"), (_interarrival, "구매주기"), (_buyer_switch, "buyer전환")]:
+        blocks_tr.append(fn(tr, train_ids)); blocks_te.append(fn(te, test_ids))
+    print("[features] 상대가격/구매주기/buyer전환 완료")
 
     # 4) OOF 타깃인코딩 (+ 교차 TE)
     if use_te:
