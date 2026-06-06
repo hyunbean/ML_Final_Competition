@@ -428,7 +428,32 @@ def _target_encode(train_df, test_df, col, train_ids, test_ids, folds, y, alpha)
 
 
 # ----------------------------- 계층 TE (잔차 + Bayesian hierarchical shrinkage) -----------------------------
-HIER_TE = [("brd_nm", "pc_nm"), ("goodcd", "brd_nm"), ("corner_nm", "part_nm")]
+HIER_TE = [("brd_nm", "pc_nm"), ("goodcd", "brd_nm"), ("corner_nm", "part_nm"),
+           ("goodcd", "pc_nm"), ("brd_nm", "part_nm")]
+
+# gift-season 윈도우 (month, day_from, day_to) — 데이터 2017-05~2018-04 전 구간 포함
+GIFT_WINDOWS = {"valentine": (2, 1, 14), "whiteday": (3, 1, 14), "xmas": (12, 15, 25),
+                "mayfamily": (5, 1, 15), "newyear": (1, 1, 10)}
+
+
+def _giftseason_features(df, ids):
+    """gift-season 구매 행태 — 선물시즌 지출비중 + 선물성 카테고리(화장품/주얼리/잡화)를
+    선물시즌에 산 비율. 선물구매자(성별 신호 약화) 탐지 → 도메인 신호."""
+    d = df[[C.ID_COL, "sales_datetime", "net_amt", "part_nm", "pc_nm", "corner_nm"]].copy()
+    dt = pd.to_datetime(d["sales_datetime"]); d["mo"] = dt.dt.month; d["dy"] = dt.dt.day
+    w = d["net_amt"].clip(lower=0); gid = d[C.ID_COL]; tot = w.groupby(gid).sum() + 1.0
+    giftcat = (d["part_nm"].astype(str) + d["pc_nm"].astype(str) + d["corner_nm"].astype(str)).str.contains(
+        "화장품|향수|주얼리|보석|시계|핸드백|잡화|상품권", regex=True)
+    out = {}
+    anygift = pd.Series(False, index=d.index)
+    for name, (m, d1, d2) in GIFT_WINDOWS.items():
+        win = (d["mo"] == m) & (d["dy"].between(d1, d2))
+        anygift = anygift | win
+        out[f"gs_{name}_ratio"] = (w * win).groupby(gid).sum() / tot
+    out["gs_anygift_ratio"] = (w * anygift).groupby(gid).sum() / tot
+    out["gs_giftcat_inwin"] = (w * anygift * giftcat.values).groupby(gid).sum() / tot   # 선물시즌×선물카테고리
+    out["gs_giftcat_total"] = (w * giftcat.values).groupby(gid).sum() / tot
+    return pd.DataFrame(out).reindex(ids).fillna(0.0)
 
 
 def _hier_te_oof(tr, te, child, parent, train_ids, test_ids, folds, y, c_up=20.0, c_lo=10.0):
@@ -519,7 +544,7 @@ def _w2v_pooled(train_df, test_df, col, train_ids, test_ids, vector_size, window
 def build_features(use_te=True, use_emb=True, use_groups=True, use_fe2=False, emb_vector_size=16,
                    te_cols=TE_COLS, emb_cols=EMB_COLS, alpha=TE_ALPHA, cache=True):
     bm_on = (C.DATA_DIR / "brand_meta.csv").exists()
-    key = f"feat_te{int(use_te)}_emb{int(use_emb)}_g{int(use_groups)}_fe2{int(use_fe2)}_v{emb_vector_size}_r10{'_bm' if bm_on else ''}"
+    key = f"feat_te{int(use_te)}_emb{int(use_emb)}_g{int(use_groups)}_fe2{int(use_fe2)}_v{emb_vector_size}_r11{'_bm' if bm_on else ''}"
     f_tr, f_te = FEAT_DIR / f"{key}_train.pkl", FEAT_DIR / f"{key}_test.pkl"
     train_ids, test_ids, folds, y = _load_canonical()
 
@@ -581,6 +606,11 @@ def build_features(use_te=True, use_emb=True, use_groups=True, use_fe2=False, em
     blocks_tr.append(_trajectory_features(tr, train_ids))
     blocks_te.append(_trajectory_features(te, test_ids))
     print("[features] trajectory(전후반 변화) 완료")
+
+    # 3.96) gift-season (선물시즌 구매행태 — 도메인 신호)
+    blocks_tr.append(_giftseason_features(tr, train_ids))
+    blocks_te.append(_giftseason_features(te, test_ids))
+    print("[features] gift-season 완료")
 
     # 4) OOF 타깃인코딩 (+ 교차 TE)
     if use_te:
