@@ -28,7 +28,7 @@ FEAT_DIR.mkdir(parents=True, exist_ok=True)
 # 어떤 컬럼에 무엇을 적용할지 (카디널리티 고려)
 TE_COLS = ["part_nm", "pc_nm", "brd_nm", "corner_nm", "buyer_nm", "str_nm", "goodcd"]  # 타깃인코딩
 CROSS_TE = [("part_nm", "time_zone"), ("part_nm", "season")]   # 교차 타깃인코딩(상호작용)
-EMB_COLS = ["corner_nm", "brd_nm", "pc_nm", "part_nm"]          # W2V 임베딩
+EMB_COLS = ["corner_nm", "brd_nm", "pc_nm", "part_nm", "goodcd"]  # W2V 임베딩 (goodcd item2vec 추가)
 COMP_COLS = ["team_nm", "part_nm", "season", "time_zone"]       # 저카디널리티 → 구성비(crosstab)
 DIV_COLS = ["brd_nm", "part_nm", "corner_nm", "time_zone", "str_nm"]  # 다양성/엔트로피
 TE_ALPHA = 20.0   # 베이지안 스무딩 강도
@@ -123,6 +123,15 @@ def _brand_meta_features(df, ids):
     for a in attrs:
         out[f"bm_{a}"] = (m[a].fillna(defaults[a]) * m["_w"]).groupby(gid).sum() / wsum
     return pd.DataFrame(out).reindex(ids).fillna(0.0)
+
+
+def _add_transition(df: pd.DataFrame, col: str = "corner_nm") -> pd.DataFrame:
+    """직전구매→현재구매 전이 토큰 (시간순). 이후 OOF-TE → P(gender|A→B). 시퀀스와 다른 신호."""
+    s = df[[C.ID_COL, "sales_datetime", col]].sort_values([C.ID_COL, "sales_datetime"])
+    prev = s.groupby(C.ID_COL)[col].shift(1).fillna("START").astype(str)
+    trans = prev + "→" + s[col].astype(str)
+    df[f"trans_{col}"] = trans.reindex(df.index)
+    return df
 
 
 def _add_time(df: pd.DataFrame) -> pd.DataFrame:
@@ -429,7 +438,7 @@ def _w2v_pooled(train_df, test_df, col, train_ids, test_ids, vector_size, window
 def build_features(use_te=True, use_emb=True, use_groups=True, use_fe2=False, emb_vector_size=16,
                    te_cols=TE_COLS, emb_cols=EMB_COLS, alpha=TE_ALPHA, cache=True):
     bm_on = (C.DATA_DIR / "brand_meta.csv").exists()
-    key = f"feat_te{int(use_te)}_emb{int(use_emb)}_g{int(use_groups)}_fe2{int(use_fe2)}_v{emb_vector_size}_r7{'_bm' if bm_on else ''}"
+    key = f"feat_te{int(use_te)}_emb{int(use_emb)}_g{int(use_groups)}_fe2{int(use_fe2)}_v{emb_vector_size}_r8{'_bm' if bm_on else ''}"
     f_tr, f_te = FEAT_DIR / f"{key}_train.pkl", FEAT_DIR / f"{key}_test.pkl"
     train_ids, test_ids, folds, y = _load_canonical()
 
@@ -493,7 +502,9 @@ def build_features(use_te=True, use_emb=True, use_groups=True, use_fe2=False, em
             name = f"x_{ca}_{cb}"
             tr[name] = tr[ca].astype(str) + "|" + tr[cb].astype(str)
             te[name] = te[ca].astype(str) + "|" + te[cb].astype(str)
-        for col in list(te_cols) + [f"x_{ca}_{cb}" for ca, cb in CROSS_TE]:
+        tr = _add_transition(tr, "corner_nm"); te = _add_transition(te, "corner_nm")   # 전이 토큰
+        extra_te = [f"x_{ca}_{cb}" for ca, cb in CROSS_TE] + ["trans_corner_nm"]
+        for col in list(te_cols) + extra_te:
             tr_te, te_te = _target_encode(tr, te, col, train_ids, test_ids, folds, y, alpha)
             blocks_tr.append(tr_te)
             blocks_te.append(te_te)
