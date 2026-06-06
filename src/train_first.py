@@ -205,6 +205,17 @@ def build_tfidf(df):
     return bt, ct, bs, cs
 
 
+def build_goodcd_svd(df):
+    """정크코드(용기보증/미확인 22.6%) 제거한 goodcd TF-IDF→SVD. 11k 상품의 finest 신호."""
+    d = df.copy(); d["goodcd"] = d["goodcd"].astype(str)
+    junk = d["goodcd"].eq("2700000000000") | d["pc_nm"].astype(str).eq("미확인pc") | d["corner_nm"].astype(str).eq("용기보증")
+    d = d[~junk]
+    doc = d.groupby("custid")["goodcd"].apply(lambda x: " ".join(x))
+    gm = TfidfVectorizer(max_features=2000, min_df=5).fit_transform(doc)
+    gs = pd.DataFrame(TruncatedSVD(24, random_state=42).fit_transform(gm), index=doc.index).add_prefix("svd_goodcd_")
+    return gs
+
+
 # ---------- 10. 할인+피크 ----------
 def build_discpeak(df):
     d = df.copy(); d["sales_time"] = d["sales_time"].fillna(0).astype(int); d["dp_hour"] = d["sales_time"] // 100
@@ -300,6 +311,7 @@ def build_all():
     tr_only = full[full["dataset"] == "train"].copy(); te_only = full[full["dataset"] == "test"].copy()
     print("FE: style/behavior/calendar/interest/entropy/base/tfidf/disc/refund/social/dwell/recent ...")
     bt, ct, bs, cs = build_tfidf(full)
+    gs = build_goodcd_svd(full)   # 정크제거 goodcd SVD (finest 신호)
     te_blocks = []
     for col in ["brd_nm", "corner_nm", "part_nm", "str_part_key"]:
         te_blocks.append(pd.concat([_kfold_te(tr_only, y, col), _te_test(tr_only, te_only, y, col)], axis=0))
@@ -308,7 +320,7 @@ def build_all():
             .join(build_style(full), how="left").join(build_behavior(full), how="left")
             .join(build_calendar(full), how="left").join(build_interest(full), how="left")
             .join(build_entropy(full), how="left").join(bt, how="left").join(ct, how="left")
-            .join(bs, how="left").join(cs, how="left").join(te_feats, how="left")
+            .join(bs, how="left").join(cs, how="left").join(gs, how="left").join(te_feats, how="left")
             .join(build_discpeak(full), how="left").join(build_refund(full), how="left")
             .join(build_dwell(full), how="left").join(build_social(full), how="left")
             .join(build_recent(full, 5), how="left").join(build_recent(full, 3), how="left"))
