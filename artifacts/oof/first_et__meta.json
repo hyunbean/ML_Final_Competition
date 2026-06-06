@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.7015775185140314,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "작년1등 FE(497)",
+  "created_by": "hyunbean",
+  "notes": "1st-place FE + first_et 5fold OOF"
+}
