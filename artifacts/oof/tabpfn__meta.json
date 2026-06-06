@@ -1,8 +1,8 @@
 {
-  "cv_auc": 0.7047992979866459,
+  "cv_auc": 0.70502343419827,
   "seed": 42,
   "n_folds": 5,
-  "feature_set": "top100 + TabPFN bag4",
+  "feature_set": "top200 + TabPFN bag10",
   "created_by": "hyunbean",
   "notes": "TabPFN v2 in-context, top-K feats, subsample-bagged"
 }
