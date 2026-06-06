@@ -1,5 +1,5 @@
 {
-  "cv_auc": 0.7041650165621093,
+  "cv_auc": 0.7076014549337161,
   "seed": 42,
   "n_folds": 5,
   "feature_set": "our + 구매주기+전이bigram",
