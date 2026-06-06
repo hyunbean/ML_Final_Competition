@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.6554414879383983,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "multilingual-e5 emb→SVD64 LGBM",
+  "created_by": "hyunbean",
+  "notes": "e5 다국어 거래텍스트 임베딩 5fold OOF"
+}
