@@ -6,6 +6,7 @@ fusion_ag(our+mega)는 우리 피처가 노이즈라 0.713로 떨어짐 → mega
      python -m src.train_mega_ag [TIME=3600] [PRESET=best_quality]
 """
 import sys
+import shutil
 import numpy as np
 import pandas as pd
 from sklearn.metrics import roc_auc_score
@@ -35,9 +36,16 @@ def main():
     for f in range(C.N_FOLDS):
         trn, va = np.where(folds != f)[0], np.where(folds == f)[0]
         df = tr.iloc[trn].copy(); df[C.TARGET] = y[trn]
+        path = C.ARTIFACTS / f"ag_mega_fold{f}"
+        if path.exists():
+            shutil.rmtree(path)              # 이전 run 잔여 제거 (overwrite 경고/충돌 방지)
         pred = TabularPredictor(label=C.TARGET, eval_metric="roc_auc",
-                                path=str(C.ARTIFACTS / f"ag_mega_fold{f}")).fit(
-            df, time_limit=TIME, presets=PRESET, verbosity=1)
+                                path=str(path)).fit(
+            df, time_limit=TIME, presets=PRESET, verbosity=1,
+            dynamic_stacking=False,                                   # DyStack OFF (작업2배·OOM·FileNotFound 원인)
+            num_gpus=1, num_cpus=8,
+            ag_args_ensemble={"fold_fitting_strategy": "sequential_local"},  # fold 순차학습 → Ray 병렬 OOM 제거
+            ag_args_fit={"ag.max_memory_usage_ratio": 0.7})          # 메모리 보수적
         oof[va] = pred.predict_proba(tr.iloc[va])[1].values
         test_sum += pred.predict_proba(te)[1].values
         print(f"[fold {f}] AUC={roc_auc_score(y[va], oof[va]):.5f}")
