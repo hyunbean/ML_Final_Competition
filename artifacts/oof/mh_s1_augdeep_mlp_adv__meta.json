@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.7148076920127698,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "minhyung session1",
+  "created_by": "minhyung",
+  "notes": "s1 model oof import (augdeep_mlp_adv)"
+}
