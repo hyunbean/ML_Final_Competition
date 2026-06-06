@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.7142943598997313,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "작년1등 FE (497feat) CatBoost",
+  "created_by": "hyunbean",
+  "notes": "2025 1st-place notebook FE ported + tuned CatBoost, 5fold OOF"
+}
