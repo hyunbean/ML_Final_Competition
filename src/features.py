@@ -157,6 +157,84 @@ def _diversity(df, col, ids):
     return g.reindex(ids).fillna(0.0)
 
 
+# ----------------------------- 1등 노트북 차용 피처 (dwell/social/recent-K/gender/buyer) -----------------------------
+# 작년 1등 솔루션에서 우리가 안 쓰던 신호만 선별 차용. 모두 비지도(누수 없음).
+_REPLACE_PART = {"가정용품파트": "가정용품", "공산품파트": "공산품", "생식품파트": "생식품",
+                 "잡화파트": "잡화", "로얄부틱": "로얄부띠끄", "스포츠캐쥬얼": "스포츠캐주얼", "여성캐쥬얼": "여성캐주얼"}
+_MALE_PARTS = ["가정용품", "공산품", "생식품", "케주얼,구두,아동", "남성정장", "남성캐주얼"]
+_FEMALE_PARTS = ["여성캐주얼", "영캐릭터", "영플라자", "패션잡화", "여성정장"]
+
+
+def _first_extra_features(df, ids):
+    d = df[[C.ID_COL, "sales_datetime", "part_nm", "buyer_nm", "brd_nm", "corner_nm", "net_amt"]].copy()
+    dt = pd.to_datetime(d["sales_datetime"])
+    d["date"] = dt.dt.normalize()
+    hour = dt.dt.hour; d["tmin"] = hour * 60 + dt.dt.minute
+    dow = dt.dt.dayofweek
+    gid = d[C.ID_COL]
+    amt = d["net_amt"].clip(lower=0)
+    res = {}
+
+    # --- social time (평일저녁 + 주말낮) ---
+    d["_soc"] = (((dow <= 4) & (hour >= 18)) | ((dow >= 5) & (hour.between(12, 21)))).astype(int)
+    tot_trx = d.groupby(C.ID_COL).size()
+    res["fe_social_trx_ratio"] = d.groupby(C.ID_COL)["_soc"].sum() / tot_trx
+    res["fe_social_amt_ratio"] = (amt * d["_soc"]).groupby(gid).sum() / (amt.groupby(gid).sum() + 1)
+
+    # --- dwell time (하루 첫~마지막 거래 시간차) ---
+    dg = d.groupby([C.ID_COL, "date"])
+    day = pd.DataFrame({"span": (dg["tmin"].max() - dg["tmin"].min()).clip(lower=0),
+                        "amt": d.groupby([C.ID_COL, "date"])["net_amt"].sum().clip(lower=0),
+                        "soc": dg["_soc"].max()})
+    day["long"] = (day["span"] >= 60).astype(int)
+    day["apd"] = day["amt"] / (day["span"] + 1)
+    cg = day.groupby(level=0)
+    res["fe_dwell_span_mean"] = cg["span"].mean()
+    res["fe_dwell_span_max"] = cg["span"].max()
+    res["fe_dwell_longstay_ratio"] = cg["long"].mean()
+    res["fe_dwell_amt_per_min"] = cg["apd"].mean()
+    res["fe_dwell_social_long_ratio"] = ((day["soc"] == 1) & (day["long"] == 1)).groupby(level=0).mean()
+
+    # --- 수작업 male/female 파트 비율 + gender score ---
+    pn = d["part_nm"].fillna("").astype(str).replace(_REPLACE_PART)
+    mc = pn.isin(_MALE_PARTS).astype(int).groupby(gid).sum()
+    fc = pn.isin(_FEMALE_PARTS).astype(int).groupby(gid).sum()
+    tt = mc + fc
+    res["fe_male_part_ratio"] = mc / (tt + 1e-5)
+    res["fe_female_part_ratio"] = fc / (tt + 1e-5)
+    res["fe_gender_part_score"] = (mc - fc) / (tt + 1e-5)
+
+    # --- 관심 키워드 성별 스코어 ---
+    txt = d["brd_nm"].fillna("") + " " + d["corner_nm"].fillna("") + " " + d["part_nm"].fillna("")
+    atot = amt.groupby(gid).sum() + 1e-5
+
+    def _kwr(kw):
+        return (amt * txt.str.contains(kw, na=False)).groupby(gid).sum() / atot
+    r_m, r_f, r_k = _kwr("남성"), _kwr("여성"), _kwr("아동")
+    res["fe_int_men"] = r_m; res["fe_int_women"] = r_f
+    res["fe_gender_interest_score"] = r_m - r_f + 0.5 * r_k
+
+    # --- buyer(바이어) 다양성/집중도 ---
+    res["fe_n_buyers"] = d.groupby(C.ID_COL)["buyer_nm"].nunique()
+    bc = d.groupby([C.ID_COL, "buyer_nm"]).size()
+    res["fe_buyer_top_share"] = bc.groupby(level=0).max() / bc.groupby(level=0).sum()
+
+    # --- recent-K (최근 3·5건) ---
+    d2 = d.sort_values([C.ID_COL, "sales_datetime"], ascending=[True, False])
+    d2["rn"] = d2.groupby(C.ID_COL).cumcount()
+    pn2 = d2["part_nm"].fillna("").astype(str).replace(_REPLACE_PART)
+    d2["_m"] = pn2.isin(_MALE_PARTS).astype(int); d2["_f"] = pn2.isin(_FEMALE_PARTS).astype(int)
+    for k in (3, 5):
+        rg = d2[d2["rn"] < k].groupby(C.ID_COL)
+        res[f"fe_recent{k}_male_ratio"] = rg["_m"].mean()
+        res[f"fe_recent{k}_female_ratio"] = rg["_f"].mean()
+        res[f"fe_recent{k}_amt_mean"] = rg["net_amt"].mean()
+
+    out = pd.DataFrame({k: v.reindex(ids) for k, v in res.items()}).fillna(0.0)
+    out.index = ids
+    return out
+
+
 # ----------------------------- 의미그룹 비중 (도메인 파생변수 v2) -----------------------------
 # EDA(카테고리별 성비) 기반. part_nm+pc_nm+corner_nm 텍스트에 키워드 매칭 → 고객별 구매 비중.
 # 방향(어느 성별)은 모델이 학습. 철자변형(캐주얼/캐쥬얼 등) 커버 위해 부분일치 사용.
@@ -330,7 +408,7 @@ def _w2v_pooled(train_df, test_df, col, train_ids, test_ids, vector_size, window
 def build_features(use_te=True, use_emb=True, use_groups=True, use_fe2=False, emb_vector_size=16,
                    te_cols=TE_COLS, emb_cols=EMB_COLS, alpha=TE_ALPHA, cache=True):
     bm_on = (C.DATA_DIR / "brand_meta.csv").exists()
-    key = f"feat_te{int(use_te)}_emb{int(use_emb)}_g{int(use_groups)}_fe2{int(use_fe2)}_v{emb_vector_size}_r5{'_bm' if bm_on else ''}"
+    key = f"feat_te{int(use_te)}_emb{int(use_emb)}_g{int(use_groups)}_fe2{int(use_fe2)}_v{emb_vector_size}_r6{'_bm' if bm_on else ''}"
     f_tr, f_te = FEAT_DIR / f"{key}_train.pkl", FEAT_DIR / f"{key}_test.pkl"
     train_ids, test_ids, folds, y = _load_canonical()
 
@@ -376,6 +454,11 @@ def build_features(use_te=True, use_emb=True, use_groups=True, use_fe2=False, em
     blocks_tr.append(_temporal_dynamics(tr, train_ids))
     blocks_te.append(_temporal_dynamics(te, test_ids))
     print("[features] 행동 동역학(시간) 완료")
+
+    # 3.8) 1등 노트북 차용 (dwell/social/recent-K/gender-score/buyer)
+    blocks_tr.append(_first_extra_features(tr, train_ids))
+    blocks_te.append(_first_extra_features(te, test_ids))
+    print("[features] 1등차용(dwell/social/recent/gender/buyer) 완료")
 
     # 4) OOF 타깃인코딩 (+ 교차 TE)
     if use_te:
