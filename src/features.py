@@ -28,7 +28,7 @@ FEAT_DIR.mkdir(parents=True, exist_ok=True)
 # 어떤 컬럼에 무엇을 적용할지 (카디널리티 고려)
 TE_COLS = ["part_nm", "pc_nm", "brd_nm", "corner_nm", "buyer_nm", "str_nm", "goodcd"]  # 타깃인코딩
 CROSS_TE = [("part_nm", "time_zone"), ("part_nm", "season")]   # 교차 타깃인코딩(상호작용)
-EMB_COLS = ["corner_nm", "brd_nm", "pc_nm", "part_nm"]          # W2V 임베딩
+EMB_COLS = ["corner_nm", "brd_nm", "pc_nm", "part_nm", "goodcd"]  # W2V 임베딩 (goodcd item2vec 추가)
 COMP_COLS = ["team_nm", "part_nm", "season", "time_zone"]       # 저카디널리티 → 구성비(crosstab)
 DIV_COLS = ["brd_nm", "part_nm", "corner_nm", "time_zone", "str_nm"]  # 다양성/엔트로피
 TE_ALPHA = 20.0   # 베이지안 스무딩 강도
@@ -123,6 +123,15 @@ def _brand_meta_features(df, ids):
     for a in attrs:
         out[f"bm_{a}"] = (m[a].fillna(defaults[a]) * m["_w"]).groupby(gid).sum() / wsum
     return pd.DataFrame(out).reindex(ids).fillna(0.0)
+
+
+def _add_transition(df: pd.DataFrame, col: str = "corner_nm") -> pd.DataFrame:
+    """직전구매→현재구매 전이 토큰 (시간순). 이후 OOF-TE → P(gender|A→B). 시퀀스와 다른 신호."""
+    s = df[[C.ID_COL, "sales_datetime", col]].sort_values([C.ID_COL, "sales_datetime"])
+    prev = s.groupby(C.ID_COL)[col].shift(1).fillna("START").astype(str)
+    trans = prev + "→" + s[col].astype(str)
+    df[f"trans_{col}"] = trans.reindex(df.index)
+    return df
 
 
 def _add_time(df: pd.DataFrame) -> pd.DataFrame:
@@ -284,6 +293,32 @@ def _semantic_group_features(df, ids):
     return pd.DataFrame(out).reindex(ids).fillna(0.0)
 
 
+def _trajectory_features(df, ids):
+    """전반/후반 카테고리 금액비중 변화(delta) + 지출 추세 기울기. 정적집계와 저상관(새 축)."""
+    d = df[[C.ID_COL, "sales_datetime", "net_amt", "part_nm", "pc_nm", "corner_nm"]].copy()
+    d["sales_datetime"] = pd.to_datetime(d["sales_datetime"])
+    d = d.sort_values([C.ID_COL, "sales_datetime"])
+    gid = d[C.ID_COL]
+    d["rn"] = d.groupby(C.ID_COL).cumcount()
+    d["n"] = d.groupby(C.ID_COL)[C.ID_COL].transform("size")
+    d["half"] = (d["rn"] >= d["n"] / 2.0).astype(int)            # 0=전반, 1=후반
+    w = d["net_amt"].clip(lower=0)
+    cat = d["part_nm"].astype(str) + " " + d["pc_nm"].astype(str) + " " + d["corner_nm"].astype(str)
+    out = {}
+    for name, kws in SEMANTIC_GROUPS.items():
+        fw = cat.str.contains("|".join(map(re.escape, kws)), regex=True).astype(float) * w
+        first = (fw * (d["half"] == 0)).groupby(gid).sum() / ((w * (d["half"] == 0)).groupby(gid).sum() + 1.0)
+        second = (fw * (d["half"] == 1)).groupby(gid).sum() / ((w * (d["half"] == 1)).groupby(gid).sum() + 1.0)
+        out[f"traj_{name}_delta"] = second - first
+    # 지출 추세 기울기 (거래순번 vs net_amt 선형 slope)
+    d["xy"] = d["rn"] * d["net_amt"]
+    g = d.groupby(C.ID_COL).agg(n=("rn", "size"), sx=("rn", "sum"), sy=("net_amt", "sum"),
+                                sxx=("rn", lambda s: float((s.astype(float) ** 2).sum())), sxy=("xy", "sum"))
+    denom = (g["n"] * g["sxx"] - g["sx"] ** 2).replace(0, np.nan)
+    out["traj_amount_slope"] = ((g["n"] * g["sxy"] - g["sx"] * g["sy"]) / denom).fillna(0.0)
+    return pd.DataFrame(out).reindex(ids).fillna(0.0)
+
+
 # ----------------------------- 행렬분해 SVD/LDA (피처② 임베딩) -----------------------------
 # 고객×카테고리 동시발생 행렬을 분해 → 잠재 성향 축. 비지도(train+test 전체)라 누수 없음.
 FE2_SVD = {"brd_nm": 16, "goodcd": 16, "corner_nm": 12}   # col: n_components
@@ -345,17 +380,25 @@ def _category_rate(cc, gender, id_set, col, alpha, global_rate):
 
 
 def _agg_rate(cc, rate, col, global_rate):
-    """고객이 산 카테고리들의 rate를 집계 → 고객별 피처(거래수 가중평균/최대/최소/표준편차)."""
+    """고객이 산 카테고리들의 rate를 집계 → 거래수 가중평균/최대/최소/표준편차
+    + 분포 shape(극단성향비율·|r-0.5|평균) : 단봉(일관)/양봉(선물형) 구분 신호."""
     sub = cc.copy()
     sub["r"] = sub[col].map(rate).fillna(global_rate)
     sub["rc"] = sub["r"] * sub["cnt"]
+    sub["hi"] = (sub["r"] > 0.8) * sub["cnt"]        # 강한 성별 카테고리 거래수
+    sub["lo"] = (sub["r"] < 0.2) * sub["cnt"]
+    sub["d50"] = (sub["r"] - 0.5).abs() * sub["cnt"]  # 0.5에서 떨어진 정도(확신)
     g = sub.groupby(C.ID_COL).agg(rc=("rc", "sum"), c=("cnt", "sum"),
-                                  rmax=("r", "max"), rmin=("r", "min"), rstd=("r", "std"))
+                                  rmax=("r", "max"), rmin=("r", "min"), rstd=("r", "std"),
+                                  hi=("hi", "sum"), lo=("lo", "sum"), d50=("d50", "sum"))
     return pd.DataFrame({
         f"te_{col}_wmean": g["rc"] / g["c"],
         f"te_{col}_max": g["rmax"],
         f"te_{col}_min": g["rmin"],
         f"te_{col}_std": g["rstd"].fillna(0.0),
+        f"te_{col}_extreme_hi": g["hi"] / g["c"],     # 극단 비율(양봉=선물형 단서)
+        f"te_{col}_extreme_lo": g["lo"] / g["c"],
+        f"te_{col}_conf": g["d50"] / g["c"],          # 확신도(|r-0.5| 가중평균)
     })
 
 
@@ -382,6 +425,53 @@ def _target_encode(train_df, test_df, col, train_ids, test_ids, folds, y, alpha)
         test_parts.append(_agg_rate(cc_te, rate_f, col, global_rate).reindex(test_ids).fillna(global_rate))
     test_te = sum(test_parts) / C.N_FOLDS
     return train_te, test_te
+
+
+# ----------------------------- 계층 TE (잔차 + Bayesian hierarchical shrinkage) -----------------------------
+HIER_TE = [("brd_nm", "pc_nm"), ("goodcd", "brd_nm"), ("corner_nm", "part_nm")]
+
+
+def _hier_te_oof(tr, te, child, parent, train_ids, test_ids, folds, y, c_up=20.0, c_lo=10.0):
+    """계층 TE: 상위(parent) smoothed TE를 prior로 하위(child) Bayesian shrink + 잔차(child−parent).
+    (parent,child) 조인으로 child가 여러 parent에 걸쳐도 정확. fold-safe OOF, 고객별 mean/std 집계."""
+    gmean = float(y.mean())
+    gender = pd.Series(y, index=train_ids)
+    cols = [C.ID_COL, parent, child]
+    trx = tr[cols].copy(); trx["g"] = trx[C.ID_COL].map(gender)
+    tex = te[cols].copy()
+
+    def _fit(tx):
+        up = tx.groupby(parent)["g"].agg(["count", "mean"])
+        uTE = (up["count"] * up["mean"] + c_up * gmean) / (up["count"] + c_up)
+        lo = tx.groupby([parent, child])["g"].agg(["count", "mean"]).reset_index()
+        lo = lo.merge(uTE.rename("uTE").reset_index(), on=parent, how="left")
+        lo["uTE"] = lo["uTE"].fillna(gmean)
+        lo["shr"] = (lo["count"] * lo["mean"] + c_lo * lo["uTE"]) / (lo["count"] + c_lo)
+        lo["res"] = lo["shr"] - lo["uTE"]
+        return uTE, lo[[parent, child, "shr", "res"]]
+
+    def _apply(tx, uTE, lo):
+        m = tx.merge(lo, on=[parent, child], how="left")
+        m["up"] = m[parent].map(uTE).fillna(gmean)
+        m["shr"] = m["shr"].fillna(m["up"]); m["res"] = m["res"].fillna(0.0)
+        p = f"hte_{child}_{parent}"
+        return m.groupby(C.ID_COL).agg(**{
+            f"{p}_up_mean": ("up", "mean"), f"{p}_shr_mean": ("shr", "mean"),
+            f"{p}_shr_std": ("shr", "std"), f"{p}_res_mean": ("res", "mean"),
+            f"{p}_res_std": ("res", "std")})
+
+    parts = []
+    for f in range(C.N_FOLDS):
+        fit_ids = set(train_ids[folds != f]); val_ids = set(train_ids[folds == f])
+        uTE, lo = _fit(trx[trx[C.ID_COL].isin(fit_ids)])
+        parts.append(_apply(trx[trx[C.ID_COL].isin(val_ids)], uTE, lo))
+    train_out = pd.concat(parts).reindex(train_ids).fillna(0.0)
+
+    test_parts = []
+    for f in range(C.N_FOLDS):
+        uTE, lo = _fit(trx[trx[C.ID_COL].isin(set(train_ids[folds != f]))])
+        test_parts.append(_apply(tex, uTE, lo).reindex(test_ids).fillna(0.0))
+    return train_out, sum(test_parts) / C.N_FOLDS
 
 
 # ----------------------------- W2V 멀티풀링 임베딩 -----------------------------
@@ -429,7 +519,7 @@ def _w2v_pooled(train_df, test_df, col, train_ids, test_ids, vector_size, window
 def build_features(use_te=True, use_emb=True, use_groups=True, use_fe2=False, emb_vector_size=16,
                    te_cols=TE_COLS, emb_cols=EMB_COLS, alpha=TE_ALPHA, cache=True):
     bm_on = (C.DATA_DIR / "brand_meta.csv").exists()
-    key = f"feat_te{int(use_te)}_emb{int(use_emb)}_g{int(use_groups)}_fe2{int(use_fe2)}_v{emb_vector_size}_r7{'_bm' if bm_on else ''}"
+    key = f"feat_te{int(use_te)}_emb{int(use_emb)}_g{int(use_groups)}_fe2{int(use_fe2)}_v{emb_vector_size}_r10{'_bm' if bm_on else ''}"
     f_tr, f_te = FEAT_DIR / f"{key}_train.pkl", FEAT_DIR / f"{key}_test.pkl"
     train_ids, test_ids, folds, y = _load_canonical()
 
@@ -487,17 +577,29 @@ def build_features(use_te=True, use_emb=True, use_groups=True, use_fe2=False, em
     blocks_te.append(_frequency_features(te, test_ids, fmaps))
     print("[features] frequency encoding 완료")
 
+    # 3.95) trajectory (전후반 카테고리 변화 + 지출기울기 — 저상관 새 축)
+    blocks_tr.append(_trajectory_features(tr, train_ids))
+    blocks_te.append(_trajectory_features(te, test_ids))
+    print("[features] trajectory(전후반 변화) 완료")
+
     # 4) OOF 타깃인코딩 (+ 교차 TE)
     if use_te:
         for ca, cb in CROSS_TE:                      # 교차 컬럼 생성
             name = f"x_{ca}_{cb}"
             tr[name] = tr[ca].astype(str) + "|" + tr[cb].astype(str)
             te[name] = te[ca].astype(str) + "|" + te[cb].astype(str)
-        for col in list(te_cols) + [f"x_{ca}_{cb}" for ca, cb in CROSS_TE]:
+        tr = _add_transition(tr, "corner_nm"); te = _add_transition(te, "corner_nm")   # 전이 토큰
+        extra_te = [f"x_{ca}_{cb}" for ca, cb in CROSS_TE] + ["trans_corner_nm"]
+        for col in list(te_cols) + extra_te:
             tr_te, te_te = _target_encode(tr, te, col, train_ids, test_ids, folds, y, alpha)
             blocks_tr.append(tr_te)
             blocks_te.append(te_te)
             print(f"[features] TE(OOF) {col} 완료")
+        # 계층 TE (잔차 + Bayesian hierarchical shrinkage)
+        for child, parent in HIER_TE:
+            h_tr, h_te = _hier_te_oof(tr, te, child, parent, train_ids, test_ids, folds, y)
+            blocks_tr.append(h_tr); blocks_te.append(h_te)
+            print(f"[features] 계층TE {child}<-{parent} 완료")
 
     # 5) W2V 임베딩
     if use_emb:
