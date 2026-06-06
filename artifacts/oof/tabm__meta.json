@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.6972022300849283,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "TabM BatchEnsemble k=8",
+  "created_by": "hyunbean",
+  "notes": "TabM-style (BatchEnsemble MLP, mean-of-loss, GaussRank)"
+}
