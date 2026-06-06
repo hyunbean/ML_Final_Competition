@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.711693295823098,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "mega572 XGBoost",
+  "created_by": "hyunbean",
+  "notes": "mega 572feat + XGBoost 5fold OOF"
+}
