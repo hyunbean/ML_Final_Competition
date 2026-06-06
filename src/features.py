@@ -427,6 +427,53 @@ def _target_encode(train_df, test_df, col, train_ids, test_ids, folds, y, alpha)
     return train_te, test_te
 
 
+# ----------------------------- 계층 TE (잔차 + Bayesian hierarchical shrinkage) -----------------------------
+HIER_TE = [("brd_nm", "pc_nm"), ("goodcd", "brd_nm"), ("corner_nm", "part_nm")]
+
+
+def _hier_te_oof(tr, te, child, parent, train_ids, test_ids, folds, y, c_up=20.0, c_lo=10.0):
+    """계층 TE: 상위(parent) smoothed TE를 prior로 하위(child) Bayesian shrink + 잔차(child−parent).
+    (parent,child) 조인으로 child가 여러 parent에 걸쳐도 정확. fold-safe OOF, 고객별 mean/std 집계."""
+    gmean = float(y.mean())
+    gender = pd.Series(y, index=train_ids)
+    cols = [C.ID_COL, parent, child]
+    trx = tr[cols].copy(); trx["g"] = trx[C.ID_COL].map(gender)
+    tex = te[cols].copy()
+
+    def _fit(tx):
+        up = tx.groupby(parent)["g"].agg(["count", "mean"])
+        uTE = (up["count"] * up["mean"] + c_up * gmean) / (up["count"] + c_up)
+        lo = tx.groupby([parent, child])["g"].agg(["count", "mean"]).reset_index()
+        lo = lo.merge(uTE.rename("uTE").reset_index(), on=parent, how="left")
+        lo["uTE"] = lo["uTE"].fillna(gmean)
+        lo["shr"] = (lo["count"] * lo["mean"] + c_lo * lo["uTE"]) / (lo["count"] + c_lo)
+        lo["res"] = lo["shr"] - lo["uTE"]
+        return uTE, lo[[parent, child, "shr", "res"]]
+
+    def _apply(tx, uTE, lo):
+        m = tx.merge(lo, on=[parent, child], how="left")
+        m["up"] = m[parent].map(uTE).fillna(gmean)
+        m["shr"] = m["shr"].fillna(m["up"]); m["res"] = m["res"].fillna(0.0)
+        p = f"hte_{child}_{parent}"
+        return m.groupby(C.ID_COL).agg(**{
+            f"{p}_up_mean": ("up", "mean"), f"{p}_shr_mean": ("shr", "mean"),
+            f"{p}_shr_std": ("shr", "std"), f"{p}_res_mean": ("res", "mean"),
+            f"{p}_res_std": ("res", "std")})
+
+    parts = []
+    for f in range(C.N_FOLDS):
+        fit_ids = set(train_ids[folds != f]); val_ids = set(train_ids[folds == f])
+        uTE, lo = _fit(trx[trx[C.ID_COL].isin(fit_ids)])
+        parts.append(_apply(trx[trx[C.ID_COL].isin(val_ids)], uTE, lo))
+    train_out = pd.concat(parts).reindex(train_ids).fillna(0.0)
+
+    test_parts = []
+    for f in range(C.N_FOLDS):
+        uTE, lo = _fit(trx[trx[C.ID_COL].isin(set(train_ids[folds != f]))])
+        test_parts.append(_apply(tex, uTE, lo).reindex(test_ids).fillna(0.0))
+    return train_out, sum(test_parts) / C.N_FOLDS
+
+
 # ----------------------------- W2V 멀티풀링 임베딩 -----------------------------
 def _w2v_pooled(train_df, test_df, col, train_ids, test_ids, vector_size, window=5, epochs=10, seed=42):
     from gensim.models import Word2Vec
@@ -472,7 +519,7 @@ def _w2v_pooled(train_df, test_df, col, train_ids, test_ids, vector_size, window
 def build_features(use_te=True, use_emb=True, use_groups=True, use_fe2=False, emb_vector_size=16,
                    te_cols=TE_COLS, emb_cols=EMB_COLS, alpha=TE_ALPHA, cache=True):
     bm_on = (C.DATA_DIR / "brand_meta.csv").exists()
-    key = f"feat_te{int(use_te)}_emb{int(use_emb)}_g{int(use_groups)}_fe2{int(use_fe2)}_v{emb_vector_size}_r9{'_bm' if bm_on else ''}"
+    key = f"feat_te{int(use_te)}_emb{int(use_emb)}_g{int(use_groups)}_fe2{int(use_fe2)}_v{emb_vector_size}_r10{'_bm' if bm_on else ''}"
     f_tr, f_te = FEAT_DIR / f"{key}_train.pkl", FEAT_DIR / f"{key}_test.pkl"
     train_ids, test_ids, folds, y = _load_canonical()
 
@@ -548,6 +595,11 @@ def build_features(use_te=True, use_emb=True, use_groups=True, use_fe2=False, em
             blocks_tr.append(tr_te)
             blocks_te.append(te_te)
             print(f"[features] TE(OOF) {col} 완료")
+        # 계층 TE (잔차 + Bayesian hierarchical shrinkage)
+        for child, parent in HIER_TE:
+            h_tr, h_te = _hier_te_oof(tr, te, child, parent, train_ids, test_ids, folds, y)
+            blocks_tr.append(h_tr); blocks_te.append(h_te)
+            print(f"[features] 계층TE {child}<-{parent} 완료")
 
     # 5) W2V 임베딩
     if use_emb:
