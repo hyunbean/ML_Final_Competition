@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.7090275633339208,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "작년1등 FE(497) Optuna-tuned",
+  "created_by": "hyunbean",
+  "notes": "1st-place FE + Optuna lgbm (overnight)"
+}
