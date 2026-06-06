@@ -53,8 +53,9 @@ def _run_lgb_focal(X, y, Xtest, folds):
         tr, va = np.where(folds != f)[0], np.where(folds == f)[0]
         dtr = lgb.Dataset(Xv[tr], label=y[tr])
         m = lgb.train(dict(learning_rate=0.03, num_leaves=63, feature_fraction=0.6,
-                           bagging_fraction=0.8, bagging_freq=1, verbosity=-1),
-                      dtr, num_boost_round=1500, fobj=_focal_obj())
+                           bagging_fraction=0.8, bagging_freq=1, verbosity=-1,
+                           objective=_focal_obj()),
+                      dtr, num_boost_round=1500)
         raw = m.predict(Xv[va]); oof[va] = 1 / (1 + np.exp(-raw))
         ts += 1 / (1 + np.exp(-m.predict(Xtv)))
         print(f"  [focal fold {f}] AUC={roc_auc_score(y[va], oof[va]):.5f}")
@@ -66,12 +67,7 @@ def main():
     folds = np.load(C.FOLDS_NPY)
     print(f"X={X.shape}")
 
-    print("=== XGB rank:pairwise (AUC 직접) ===")
-    oof, ts = _run_xgb_rank(X, y, Xtest, folds)
-    cv = float(roc_auc_score(y, oof)); print(f"==== xgb_rank CV = {cv:.5f} ====")
-    save_predictions("xgb_rank", oof, ts, meta=dict(cv_auc=cv, seed=C.SEED, n_folds=C.N_FOLDS,
-                     feature_set="full", created_by="hyunbean", notes="XGB rank:pairwise (AUC direct)"))
-
+    # xgb_rank는 0.58로 실패(전체1그룹 pairwise가 글로벌AUC에 안 맞음) → 스킵
     print("=== LGBM focal loss ===")
     oof, ts = _run_lgb_focal(X, y, Xtest, folds)
     cv = float(roc_auc_score(y, oof)); print(f"==== lgbm_focal CV = {cv:.5f} ====")
