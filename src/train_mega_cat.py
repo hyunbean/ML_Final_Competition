@@ -14,6 +14,7 @@ from .oof_io import save_predictions
 
 MODEL_NAME = "mega_cat"
 MEGA_DIR = os.environ.get("MEGA_DIR", str(C.ROOT / "민형_mega"))
+CB_TASK = os.environ.get("CB_TASK_TYPE", "CPU")   # GPU 런타임이면 CB_TASK_TYPE=GPU
 
 
 def main():
@@ -29,9 +30,15 @@ def main():
     print(f"mega_cat X={tr.shape}")
 
     params = dict(iterations=2000, learning_rate=0.0107, depth=7, l2_leaf_reg=13.9,
-                  subsample=0.708, colsample_bylevel=0.818, min_data_in_leaf=39,
+                  subsample=0.708, min_data_in_leaf=39,
                   random_strength=3.15, eval_metric="AUC", random_seed=C.SEED,
-                  verbose=0, allow_writing_files=False)
+                  verbose=0, allow_writing_files=False, task_type=CB_TASK)
+    if CB_TASK == "GPU":
+        params["devices"] = "0"
+        params["bootstrap_type"] = "Bernoulli"   # GPU subsample은 Bernoulli 필요
+    else:
+        params["colsample_bylevel"] = 0.818      # GPU에선 colsample_bylevel(rsm) 미지원
+    print(f"CatBoost task_type={CB_TASK}")
     oof = np.full(len(y), np.nan); test_sum = np.zeros(len(test_ids))
     for f in range(C.N_FOLDS):
         tri, va = np.where(folds != f)[0], np.where(folds == f)[0]
