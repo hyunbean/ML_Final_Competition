@@ -10,7 +10,8 @@ import pandas as pd
 from scipy.stats import rankdata
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression, RidgeClassifier
-from sklearn.ensemble import ExtraTreesClassifier
+from sklearn.ensemble import ExtraTreesClassifier, HistGradientBoostingClassifier
+from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import roc_auc_score
 
 from . import config as C
@@ -49,6 +50,18 @@ def _et(Xtr, ytr, Xva, Xte):
     return m.predict_proba(Xva)[:, 1], m.predict_proba(Xte)[:, 1]
 
 
+def _hgb(Xtr, ytr, Xva, Xte):
+    m = HistGradientBoostingClassifier(learning_rate=0.03, max_iter=500, max_leaf_nodes=31,
+                                       l2_regularization=1.0, random_state=C.SEED).fit(Xtr, ytr)
+    return m.predict_proba(Xva)[:, 1], m.predict_proba(Xte)[:, 1]
+
+
+def _knn(Xtr, ytr, Xva, Xte):
+    sc = StandardScaler().fit(Xtr)
+    m = KNeighborsClassifier(n_neighbors=200, weights="distance", n_jobs=-1).fit(sc.transform(Xtr), ytr)
+    return m.predict_proba(sc.transform(Xva))[:, 1], m.predict_proba(sc.transform(Xte))[:, 1]
+
+
 def _hillclimb(O, T, y, n=120, init=3):
     aucs = [roc_auc_score(y, O[:, j]) for j in range(O.shape[1])]
     picks = list(np.argsort(aucs)[::-1][:init]); cur = O[:, picks].mean(1)
@@ -82,7 +95,7 @@ def main():
     # ---- L1 메타러너들 ----
     L1o, L1t = [], []
     metas = [("logreg0.05", _logreg(0.05)), ("logreg0.3", _logreg(0.3)), ("logreg1", _logreg(1.0)),
-             ("ridge", _ridge), ("extratrees", _et)]
+             ("ridge", _ridge), ("extratrees", _et), ("histgb", _hgb), ("knn", _knn)]
     for name, fn in metas:
         o, t = _oof_meta(fn, O, T, y, folds)
         L1o.append(rk(o)); L1t.append(rk(t))

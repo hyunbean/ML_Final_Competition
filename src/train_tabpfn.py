@@ -16,9 +16,9 @@ from .features import build_features
 from .oof_io import save_predictions
 
 MODEL_NAME = "tabpfn"
-TOPK = 100          # TabPFN 피처 상한
+TOPK = 200          # TabPFN 피처 상한 (강화: 100→200)
 SUB = 10000         # fit당 서브샘플
-N_BAG = 4           # 서브샘플 앙상블 횟수
+N_BAG = 10          # 서브샘플 앙상블 횟수 (강화: 4→10)
 
 
 def _topk_feats(X, y, folds):
