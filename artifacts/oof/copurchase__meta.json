@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.5614705324956646,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "동시구매 이웃 gender 전파(transductive)",
+  "created_by": "hyunbean",
+  "notes": "co-purchase neighbor gender propensity, 관계형 직교 정보원"
+}
