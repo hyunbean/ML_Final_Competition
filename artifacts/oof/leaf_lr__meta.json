@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.6481062265308494,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "r7 GBDT leaf-index → LogReg",
+  "created_by": "hyunbean",
+  "notes": "Facebook GBDT+LR: 잎인덱스 원핫→LogReg, 5fold OOF"
+}
