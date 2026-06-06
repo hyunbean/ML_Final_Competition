@@ -15,7 +15,7 @@ from .oof_io import save_predictions
 from .features import build_features
 
 MODEL_NAME = "interact_cat"
-MH = C.ROOT / "mega피처_김민형"
+MH = C.ROOT / "민형_mega"   # git-tracked (custid 순서 동일, interact 블록 복사됨)
 CB_TASK = os.environ.get("CB_TASK_TYPE", "CPU")
 
 
@@ -27,8 +27,8 @@ def main():
 
     htr = pd.read_parquet(MH / "mega_train.parquet", columns=[C.ID_COL])[C.ID_COL].to_numpy()
     hte = pd.read_parquet(MH / "mega_test.parquet", columns=[C.ID_COL])[C.ID_COL].to_numpy()
-    itr = pd.read_parquet(MH / "feature_attempts/block_s1_interact_tr.parquet")
-    ite = pd.read_parquet(MH / "feature_attempts/block_s1_interact_te.parquet")
+    itr = pd.read_parquet(MH / "block_s1_interact_tr.parquet")
+    ite = pd.read_parquet(MH / "block_s1_interact_te.parquet")
     itr.index = htr; ite.index = hte
     itr = itr.reindex(train_ids).reset_index(drop=True)
     ite = ite.reindex(test_ids).reset_index(drop=True)
