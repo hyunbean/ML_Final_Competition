@@ -1,8 +1,8 @@
 {
-  "cv_auc": 0.7153108089010543,
+  "cv_auc": 0.71475551558587,
   "seed": 42,
   "n_folds": 5,
-  "feature_set": "작년1등 FE (521feat) LightGBM",
+  "feature_set": "작년1등 FE (536feat) LightGBM",
   "created_by": "hyunbean",
   "notes": "1st-place notebook FE + LightGBM 5fold OOF"
 }
