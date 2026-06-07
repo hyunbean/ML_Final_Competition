@@ -1,8 +1,0 @@
-{
-  "cv_auc": 0.7222610219859157,
-  "seed": 42,
-  "n_folds": 5,
-  "feature_set": "KD: 앙상블 soft target 모방",
-  "created_by": "hyunbean",
-  "notes": "knowledge distillation from strong ensemble OOF"
-}
