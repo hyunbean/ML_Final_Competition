@@ -323,6 +323,11 @@ def build_household(df):
     R["hh_proxy_male"] = R["hh_men"] * (R["hh_food"] + R["hh_kids"])          # 대리구매(여성→남성용)
     R["hh_family_breadth"] = (R[[f"hh_{s}" for s in segs]] > 0.02).sum(axis=1)  # 세그먼트 폭(가족쇼핑)
     R["hh_cos_vs_male"] = R["hh_cos"] - R["hh_men"]                            # 화장품 우위(여성단서)
+    # 신호충돌(conflict): 남성신호·여성신호 동시에 강함 = 가족대표쇼퍼만의 특수축 (차이로는 못잡음)
+    R["hh_male_sig"] = R["hh_men"] + R["hh_golf"]                              # 남성신호
+    R["hh_female_sig"] = R["hh_cos"] + R["hh_women"]                           # 여성신호
+    R["hh_conflict"] = R["hh_male_sig"] * R["hh_female_sig"]                   # 둘다高=충돌(핵심)
+    R["hh_proxy_male2"] = R["hh_men"] * (R["hh_food"] + R["hh_kids"] + R["hh_living"])  # 대리구매(living포함)
     return R
 
 
