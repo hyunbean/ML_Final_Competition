@@ -358,16 +358,12 @@ def build_brandmeta(df):
 def build_all():
     tr, te, y, full = _load()
     full["str_part_key"] = full["str_nm"].astype(str) + "_" + full["part_nm"].astype(str)
-    # goodcd 접두사 계층 (부서계층과 직교하는 상품코드 계층) - TE로만 쓰던 적 없음(SVD 압축만 함)
-    full["goodcd"] = full["goodcd"].astype(str)
-    for L in (4, 5, 6):
-        full[f"gc{L}"] = full["goodcd"].str[:L]
     tr_only = full[full["dataset"] == "train"].copy(); te_only = full[full["dataset"] == "test"].copy()
     print("FE: style/behavior/calendar/interest/entropy/base/tfidf/disc/refund/social/dwell/recent ...")
     bt, ct, bs, cs = build_tfidf(full)
     gs = build_goodcd_svd(full)   # 정크제거 goodcd SVD (finest 신호)
     te_blocks = []
-    for col in ["brd_nm", "corner_nm", "part_nm", "str_part_key", "gc4", "gc5", "gc6"]:
+    for col in ["brd_nm", "corner_nm", "part_nm", "str_part_key"]:
         te_blocks.append(pd.concat([_kfold_te(tr_only, y, col), _te_test(tr_only, te_only, y, col)], axis=0))
     te_feats = pd.concat(te_blocks, axis=1)
     allf = (build_base(full)
@@ -377,9 +373,9 @@ def build_all():
             .join(bs, how="left").join(cs, how="left").join(gs, how="left").join(te_feats, how="left")
             .join(build_discpeak(full), how="left").join(build_refund(full), how="left")
             .join(build_dwell(full), how="left").join(build_social(full), how="left")
-            .join(build_recent(full, 5), how="left").join(build_recent(full, 3), how="left")
-            .join(build_brandmeta(full), how="left"))   # 외부 브랜드지식(gender prior 등) - 강모델 미사용분
-    # NOTE: build_household(food/kids/proxy/conflict) — 에러분석 겨냥했으나 CV 하락(xgb -0.0019) → 제외
+            .join(build_recent(full, 5), how="left").join(build_recent(full, 3), how="left"))
+    # NOTE: build_household — CV 하락(-0.0019) → 제외
+    # NOTE: build_brandmeta(외부 brand gender prior) + goodcd접두사TE — bm+gc CV -0.00065(단일AUC<0.57,데이터TE에 흡수) → 제외
     allf.index.name = "custid"; allf = allf.fillna(0)
     allf.columns = [re.sub(r"[^0-9a-zA-Z가-힣_]", "_", str(c)) for c in allf.columns]
     print(f"통합 직후: {allf.shape[1]}")
