@@ -358,12 +358,16 @@ def build_brandmeta(df):
 def build_all():
     tr, te, y, full = _load()
     full["str_part_key"] = full["str_nm"].astype(str) + "_" + full["part_nm"].astype(str)
+    # goodcd 접두사 계층 (부서계층과 직교하는 상품코드 계층) - TE로만 쓰던 적 없음(SVD 압축만 함)
+    full["goodcd"] = full["goodcd"].astype(str)
+    for L in (4, 5, 6):
+        full[f"gc{L}"] = full["goodcd"].str[:L]
     tr_only = full[full["dataset"] == "train"].copy(); te_only = full[full["dataset"] == "test"].copy()
     print("FE: style/behavior/calendar/interest/entropy/base/tfidf/disc/refund/social/dwell/recent ...")
     bt, ct, bs, cs = build_tfidf(full)
     gs = build_goodcd_svd(full)   # 정크제거 goodcd SVD (finest 신호)
     te_blocks = []
-    for col in ["brd_nm", "corner_nm", "part_nm", "str_part_key"]:
+    for col in ["brd_nm", "corner_nm", "part_nm", "str_part_key", "gc4", "gc5", "gc6"]:
         te_blocks.append(pd.concat([_kfold_te(tr_only, y, col), _te_test(tr_only, te_only, y, col)], axis=0))
     te_feats = pd.concat(te_blocks, axis=1)
     allf = (build_base(full)
