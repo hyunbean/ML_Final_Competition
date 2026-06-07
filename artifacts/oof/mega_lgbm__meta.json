@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.7111795776848568,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "mega LightGBM",
+  "created_by": "hyunbean",
+  "notes": "mega 피처 + LightGBM 5fold OOF"
+}
