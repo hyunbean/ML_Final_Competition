@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.7069912961453214,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "1등 FE FTT_D_Classifier",
+  "created_by": "hyunbean",
+  "notes": "FTT_D_Classifier on 1st-place feats"
+}
