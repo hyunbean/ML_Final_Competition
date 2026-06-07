@@ -80,9 +80,9 @@ def main():
             print(f"  bag {b+1}/{BAGS}")
 
     freq_pct = freq / BAGS
-    print("\n=== 멤버 선택빈도 (✓ robust / 낮음 신기루) ===")
+    print("\n=== 멤버 선택빈도 (robust / 낮음 신기루) ===")
     for j in np.argsort(freq_pct)[::-1]:
-        mark = "✓" if freq_pct[j] >= MIN_FREQ else " "
+        mark = "*" if freq_pct[j] >= MIN_FREQ else " "
         print(f"  {mark} {freq_pct[j]*100:>5.0f}%  CV={cvs[models[j]]:.4f}  {models[j]}")
 
     keep = [j for j in range(M) if freq_pct[j] >= MIN_FREQ]
