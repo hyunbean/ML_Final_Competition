@@ -117,10 +117,14 @@ def main():
         print(f"  {k:14s} OOF {a:.5f}")
 
     best = max(cands, key=lambda k: cands[k][0])
-    print(f"\n최고: {best} = {cands[best][0]:.5f}")
-    out = C.SUB_DIR / "submission_stack3.csv"
-    pd.DataFrame({C.ID_COL: test_ids, C.TARGET: cands[best][1]}).to_csv(out, index=False)
-    print(f"saved: {out.name}")
+    print(f"\n최고(OOF): {best} = {cands[best][0]:.5f}")
+    # 모든 L2 후보 각각 저장 (logreg=OOF최고지만 신기루 위험, hillclimb=LB신뢰)
+    for k, (_, t) in cands.items():
+        out = C.SUB_DIR / f"submission_{k}.csv"
+        pd.DataFrame({C.ID_COL: test_ids, C.TARGET: t}).to_csv(out, index=False)
+        print(f"saved: {out.name}")
+    pd.DataFrame({C.ID_COL: test_ids, C.TARGET: cands[best][1]}).to_csv(
+        C.SUB_DIR / "submission_stack3.csv", index=False)
 
 
 if __name__ == "__main__":
