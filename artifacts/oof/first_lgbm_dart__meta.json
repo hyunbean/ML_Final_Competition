@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.7083065102714532,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "1등 FE DART LGBM",
+  "created_by": "hyunbean",
+  "notes": "DART boosting (decorrelated GBDT)"
+}

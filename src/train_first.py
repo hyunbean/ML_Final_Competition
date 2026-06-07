@@ -305,6 +305,32 @@ def build_recent(df, k):
     return out.fillna(0)
 
 
+def build_household(df):
+    """가족대표/가정주부 쇼퍼 신호 (에러분석: 여성이 가족용 대량구매→남성으로 오분류).
+    식품·아동·생활 = 가정주부 바스켓, 남성×식품/아동 = 대리구매(여성이 남편/가족용)."""
+    d = df.copy()
+    cat = (d["part_nm"].astype(str) + " " + d["pc_nm"].astype(str) + " " + d["corner_nm"].astype(str))
+    w = d["tot_amt"].clip(lower=0)
+    gid = d[C.ID_COL]; tot = w.groupby(gid).sum() + 1.0
+    segs = {"food": "식품|농산|생식|청과|수산|축산", "kids": "아동|유아|키즈|완구|문구",
+            "living": "가정용품|공산품|주방|생활|침구", "men": "남성|신사", "women": "여성|숙녀",
+            "cos": "화장품|향수", "golf": "골프|스포츠"}
+    r = {}
+    for s, kw in segs.items():
+        r[f"hh_{s}"] = (w * cat.str.contains(kw, regex=True)).groupby(gid).sum() / tot
+    R = pd.DataFrame(r)
+    R["hh_homemaker"] = R["hh_food"] + R["hh_kids"] + R["hh_living"]          # 가정주부 바스켓
+    R["hh_proxy_male"] = R["hh_men"] * (R["hh_food"] + R["hh_kids"])          # 대리구매(여성→남성용)
+    R["hh_family_breadth"] = (R[[f"hh_{s}" for s in segs]] > 0.02).sum(axis=1)  # 세그먼트 폭(가족쇼핑)
+    R["hh_cos_vs_male"] = R["hh_cos"] - R["hh_men"]                            # 화장품 우위(여성단서)
+    # 신호충돌(conflict): 남성신호·여성신호 동시에 강함 = 가족대표쇼퍼만의 특수축 (차이로는 못잡음)
+    R["hh_male_sig"] = R["hh_men"] + R["hh_golf"]                              # 남성신호
+    R["hh_female_sig"] = R["hh_cos"] + R["hh_women"]                           # 여성신호
+    R["hh_conflict"] = R["hh_male_sig"] * R["hh_female_sig"]                   # 둘다高=충돌(핵심)
+    R["hh_proxy_male2"] = R["hh_men"] * (R["hh_food"] + R["hh_kids"] + R["hh_living"])  # 대리구매(living포함)
+    return R
+
+
 def build_all():
     tr, te, y, full = _load()
     full["str_part_key"] = full["str_nm"].astype(str) + "_" + full["part_nm"].astype(str)
@@ -323,7 +349,8 @@ def build_all():
             .join(bs, how="left").join(cs, how="left").join(gs, how="left").join(te_feats, how="left")
             .join(build_discpeak(full), how="left").join(build_refund(full), how="left")
             .join(build_dwell(full), how="left").join(build_social(full), how="left")
-            .join(build_recent(full, 5), how="left").join(build_recent(full, 3), how="left"))
+            .join(build_recent(full, 5), how="left").join(build_recent(full, 3), how="left")
+            .join(build_household(full), how="left"))
     allf.index.name = "custid"; allf = allf.fillna(0)
     allf.columns = [re.sub(r"[^0-9a-zA-Z가-힣_]", "_", str(c)) for c in allf.columns]
     print(f"통합 직후: {allf.shape[1]}")
