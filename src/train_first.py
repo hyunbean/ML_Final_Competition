@@ -331,6 +331,30 @@ def build_household(df):
     return R
 
 
+def build_brandmeta(df):
+    """외부 브랜드지식(brand_meta.csv: gender/age/price/kids/luxury/sports/cosmetic) 금액가중 평균.
+    강모델(build_all)이 미사용하던 하드라벨 사전확률 → 데이터TE와 다른 신호(특히 희귀브랜드). 누수아님(외부지식).
+    bm_gender_std = 한 고객이 남성/여성 브랜드 섞어 사는 정도 = 가족대표쇼퍼 단서."""
+    path = C.DATA_DIR / "brand_meta.csv"
+    if not path.exists():
+        return pd.DataFrame(index=df[C.ID_COL].unique())
+    meta = pd.read_csv(path); meta["brd_nm"] = meta["brd_nm"].astype(str)
+    attrs = [c for c in meta.columns if c != "brd_nm"]
+    d = df[[C.ID_COL, "brd_nm", "tot_amt"]].copy()
+    d["brd_nm"] = d["brd_nm"].astype(str)
+    d = d.merge(meta, on="brd_nm", how="left")
+    w = d["tot_amt"].clip(lower=0) + 1.0; gid = d[C.ID_COL]
+    wsum = w.groupby(gid).sum() + 1e-9
+    out = {}
+    for a in attrs:
+        out[f"bm_{a}"] = (d[a] * w).groupby(gid).sum() / wsum
+    out["bm_gender_std"] = d.groupby(gid)["gender"].std()        # 남녀브랜드 혼재도
+    out["bm_gender_min"] = d.groupby(gid)["gender"].min()
+    out["bm_gender_max"] = d.groupby(gid)["gender"].max()
+    R = pd.DataFrame(out); R.index.name = "custid"
+    return R
+
+
 def build_all():
     tr, te, y, full = _load()
     full["str_part_key"] = full["str_nm"].astype(str) + "_" + full["part_nm"].astype(str)
@@ -349,7 +373,8 @@ def build_all():
             .join(bs, how="left").join(cs, how="left").join(gs, how="left").join(te_feats, how="left")
             .join(build_discpeak(full), how="left").join(build_refund(full), how="left")
             .join(build_dwell(full), how="left").join(build_social(full), how="left")
-            .join(build_recent(full, 5), how="left").join(build_recent(full, 3), how="left"))
+            .join(build_recent(full, 5), how="left").join(build_recent(full, 3), how="left")
+            .join(build_brandmeta(full), how="left"))   # 외부 브랜드지식(gender prior 등) - 강모델 미사용분
     # NOTE: build_household(food/kids/proxy/conflict) — 에러분석 겨냥했으나 CV 하락(xgb -0.0019) → 제외
     allf.index.name = "custid"; allf = allf.fillna(0)
     allf.columns = [re.sub(r"[^0-9a-zA-Z가-힣_]", "_", str(c)) for c in allf.columns]
