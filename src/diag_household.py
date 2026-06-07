@@ -12,6 +12,9 @@ from . import config as C
 from .train_first import build_all, build_household, _load
 
 NF = C.N_FOLDS
+import os
+DEV = os.environ.get("DIAG_DEV", "cuda")          # cpu로 로컬 실행 가능
+CBT = "GPU" if DEV == "cuda" else "CPU"
 
 
 def _oof(kind, X, y, folds):
@@ -24,7 +27,7 @@ def _oof(kind, X, y, folds):
             m = xgb.XGBClassifier(n_estimators=4000, early_stopping_rounds=150, objective="binary:logistic",
                                   eval_metric="auc", learning_rate=0.02, max_depth=7, min_child_weight=5,
                                   gamma=0.1, subsample=0.8, colsample_bytree=0.7, reg_alpha=1.0, reg_lambda=5.0,
-                                  random_state=C.SEED, tree_method="hist", device="cuda")
+                                  random_state=C.SEED, tree_method="hist", device=DEV)
             m.fit(X.iloc[tri], y[tri], eval_set=[(X.iloc[va], y[va])], verbose=False)
             imp += m.feature_importances_
         elif kind == "lgbm":
@@ -38,7 +41,7 @@ def _oof(kind, X, y, folds):
         else:
             m = CatBoostClassifier(iterations=6000, loss_function="Logloss", eval_metric="AUC", learning_rate=0.03,
                                    depth=7, l2_leaf_reg=5, random_seed=C.SEED, verbose=0, allow_writing_files=False,
-                                   task_type="GPU")
+                                   task_type=CBT)
             m.fit(X.iloc[tri], y[tri], eval_set=(X.iloc[va], y[va]), early_stopping_rounds=150)
             imp += m.get_feature_importance()
         oof[va] = m.predict_proba(X.iloc[va])[:, 1]
