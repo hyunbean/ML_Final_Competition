@@ -1,8 +1,0 @@
-{
-  "cv_auc": 0.7204697783862399,
-  "seed": 42,
-  "n_folds": 5,
-  "feature_set": "1등 FE + pseudo-label(test 준지도)",
-  "created_by": "hyunbean",
-  "notes": "pseudo-labeling on 1st-place features, 준지도 천장돌파 시도"
-}
