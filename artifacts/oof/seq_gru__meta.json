@@ -1,8 +1,8 @@
 {
-  "cv_auc": 0.6561489198258532,
+  "cv_auc": 0.678333630669027,
   "seed": 42,
   "n_folds": 5,
-  "feature_set": "seq:brd_nm",
+  "feature_set": "원본 거래시퀀스 GRU+attention(8cat+6num+timing)",
   "created_by": "hyunbean",
-  "notes": "Bi-GRU on brd_nm seq (maxlen50)"
+  "notes": "transaction-sequence GRU, 집계 안한 순서/타이밍 직접학습 (미시도 직교축)"
 }
