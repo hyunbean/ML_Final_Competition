@@ -1,8 +1,0 @@
-{
-  "cv_auc": 0.6609755610017614,
-  "seed": 42,
-  "n_folds": 5,
-  "feature_set": "NMF customer×pc 24d",
-  "created_by": "hyunbean",
-  "notes": "NMF 양수분해 페르소나"
-}
