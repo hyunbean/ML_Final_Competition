@@ -4,6 +4,7 @@ test 20k(라벨없음)를 준지도로 활용. 비지도 representation(0.66캡)
 OOF-safe: val fold은 절대 pseudo 아님(진짜 train만). pseudo는 test에서만(train누수 없음).
 실행(GPU): pip install xgboost gensim catboost → python -m src.train_pseudo_first
 """
+import os
 import numpy as np
 import pandas as pd
 import xgboost as xgb
@@ -26,9 +27,12 @@ def main():
     Xt = allf.reindex(test_ids).fillna(0.0)
     y = ydf.set_index("custid").reindex(train_ids)["gender"].to_numpy()
 
-    # teacher = 현재 최고 블렌드 test 예측 (submission_stack3 = 최신 블렌드)
-    sub = pd.read_csv(C.SUB_DIR / "submission_stack3.csv").set_index(C.ID_COL).reindex(test_ids)[C.TARGET].to_numpy()
-    conf = (sub >= HI) | (sub <= LO)
+    # teacher = git에 있는 강한 멤버 test 예측 rank-평균 (어느 머신서도 자체완결)
+    from scipy.stats import rankdata
+    TEACH = ["first_xgb", "first_lgbm", "first_cat", "kitchen_lgbm", "first_realmlp"]
+    sub = np.mean([rankdata(np.load(f"artifacts/oof/{m}__test.npy")) / len(test_ids)
+                   for m in TEACH if os.path.exists(f"artifacts/oof/{m}__test.npy")], axis=0)
+    conf = (sub >= 0.85) | (sub <= 0.15)
     pl_y = (sub[conf] >= 0.5).astype(int)
     Xp = Xt[conf]
     print(f"pseudo 고신뢰 test: {conf.sum()}/{len(sub)} (pos {pl_y.mean():.2f})")
