@@ -349,8 +349,8 @@ def build_all():
             .join(bs, how="left").join(cs, how="left").join(gs, how="left").join(te_feats, how="left")
             .join(build_discpeak(full), how="left").join(build_refund(full), how="left")
             .join(build_dwell(full), how="left").join(build_social(full), how="left")
-            .join(build_recent(full, 5), how="left").join(build_recent(full, 3), how="left")
-            .join(build_household(full), how="left"))
+            .join(build_recent(full, 5), how="left").join(build_recent(full, 3), how="left"))
+    # NOTE: build_household(food/kids/proxy/conflict) — 에러분석 겨냥했으나 CV 하락(xgb -0.0019) → 제외
     allf.index.name = "custid"; allf = allf.fillna(0)
     allf.columns = [re.sub(r"[^0-9a-zA-Z가-힣_]", "_", str(c)) for c in allf.columns]
     print(f"통합 직후: {allf.shape[1]}")

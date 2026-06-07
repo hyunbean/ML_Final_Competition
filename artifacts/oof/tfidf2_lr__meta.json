@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.6545197411608055,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "TF-IDF + goodcd prefix + bigram",
+  "created_by": "hyunbean",
+  "notes": "enhanced TF-IDF (goodcd hierarchy + ngram12)"
+}

@@ -1,8 +1,0 @@
-{
-  "cv_auc": 0.6821013968356101,
-  "seed": 42,
-  "n_folds": 5,
-  "feature_set": "임베딩전용 W2V+SVD/LDA (320) LGBM",
-  "created_by": "hyunbean",
-  "notes": "disjoint-L1: 임베딩 컬럼만 → 수치GBT와 직교 멤버"
-}

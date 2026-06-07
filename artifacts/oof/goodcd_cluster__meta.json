@@ -1,8 +1,0 @@
-{
-  "cv_auc": 0.661452338891515,
-  "seed": 42,
-  "n_folds": 5,
-  "feature_set": "goodcd item2vec→KMeans180 지출비중",
-  "created_by": "hyunbean",
-  "notes": "goodcd 잠재군집(정크제외) 단독 LGBM, 직교 멤버 후보"
-}
