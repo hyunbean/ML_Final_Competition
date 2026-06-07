@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.6698134215721472,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "ALS customer×goodcd 64d",
+  "created_by": "hyunbean",
+  "notes": "implicit ALS 협업필터 임베딩 (LightGCN-lite)"
+}
