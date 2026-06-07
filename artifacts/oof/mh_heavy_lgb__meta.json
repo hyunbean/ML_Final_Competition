@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.7138185457599738,
+  "seed": 2026,
+  "n_folds": 5,
+  "feature_set": "김민형 0607 핸드오프",
+  "created_by": "minhyung",
+  "notes": "mh_heavy_lgb (우리 folds.npy 재생성, 직접 스태킹)"
+}
