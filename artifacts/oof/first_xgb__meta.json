@@ -1,5 +1,5 @@
 {
-  "cv_auc": 0.716753329937432,
+  "cv_auc": 0.7160960655702094,
   "seed": 42,
   "n_folds": 5,
   "feature_set": "작년1등 FE(497) XGBoost",
