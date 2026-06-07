@@ -16,29 +16,42 @@ from .oof_io import list_models, load_oof
 
 BAGS = 100
 SUBSAMPLE = 0.8
-N_STEPS = 50
+N_STEPS = 40
 INIT = 3
-MIN_FREQ = 0.5     # 이 빈도 이상 선택된 멤버만 최종 블렌드에 채택
+MIN_FREQ = 0.5      # 이 빈도 이상 선택된 멤버만 최종 블렌드에 채택
+POOL_MIN_CV = 0.70  # 사전제외: CV 0.70 미만 약멤버는 어차피 안뽑힘(stability 후보풀서 제외)
 
 
 def _rank(a):
     return rankdata(a) / len(a)
 
 
+def fast_auc(y, s):
+    """벡터화 AUC (roc_auc_score보다 3~5배 빠름). y=0/1, s=점수."""
+    o = np.argsort(s, kind="stable")
+    yy = y[o]
+    n_pos = yy.sum(); n_neg = len(yy) - n_pos
+    if n_pos == 0 or n_neg == 0:
+        return 0.5
+    cum_neg = np.cumsum(1.0 - yy)
+    return float((yy * cum_neg).sum() / (n_pos * n_neg))
+
+
 def _greedy(oof, y, pool, n_steps, init):
-    aucs = {m: roc_auc_score(y, oof[m]) for m in pool}
+    aucs = {m: fast_auc(y, oof[m]) for m in pool}
     picks = sorted(pool, key=lambda m: -aucs[m])[:init]
     cur = np.mean([oof[m] for m in picks], axis=0)
-    best = (roc_auc_score(y, cur), list(picks))
+    best = (fast_auc(y, cur), list(picks))
     for _ in range(n_steps):
         b = (-1, None)
+        k = len(picks)
         for m in pool:
-            a = roc_auc_score(y, (cur * len(picks) + oof[m]) / (len(picks) + 1))
+            a = fast_auc(y, (cur * k + oof[m]) / (k + 1))
             if a > b[0]:
                 b = (a, m)
         picks.append(b[1])
         cur = (cur * (len(picks) - 1) + oof[b[1]]) / len(picks)
-        a = roc_auc_score(y, cur)
+        a = fast_auc(y, cur)
         if a > best[0]:
             best = (a, list(picks))
     return best[1]
@@ -48,11 +61,14 @@ def main():
     train_ids = np.load(C.TRAIN_IDS_NPY, allow_pickle=True)
     test_ids = np.load(C.TEST_IDS_NPY, allow_pickle=True)
     y = pd.read_csv(C.YTRAIN_CSV).set_index(C.ID_COL).reindex(train_ids)[C.TARGET].to_numpy()
-    models = list_models()
-    oof_r = {m: _rank(load_oof(m)[0]) for m in models}
-    test_r = {m: _rank(load_oof(m)[1]) for m in models}
+    allmodels = list_models()
+    oof_r = {m: _rank(load_oof(m)[0]) for m in allmodels}
+    test_r = {m: _rank(load_oof(m)[1]) for m in allmodels}
     N = len(y)
-    print(f"{len(models)} models, Stability Caruana ({BAGS} bags x {SUBSAMPLE} row-bootstrap)")
+    cvs = {m: fast_auc(y, oof_r[m]) for m in allmodels}
+    models = [m for m in allmodels if cvs[m] >= POOL_MIN_CV]
+    print(f"{len(allmodels)}개 중 CV>={POOL_MIN_CV} {len(models)}개로 Stability Caruana ({BAGS} bags x {SUBSAMPLE} row-bootstrap)")
+    print(f"  제외(약멤버 {len(allmodels)-len(models)}개): {[m for m in allmodels if cvs[m] < POOL_MIN_CV]}")
 
     rng = np.random.default_rng(C.SEED)
     freq = Counter(); wsum = Counter()
@@ -70,9 +86,8 @@ def main():
     freq_pct = {m: freq[m] / BAGS for m in models}
     print("\n=== 멤버 선택빈도 (robust=진짜 / 낮음=신기루) ===")
     for m, f in sorted(freq_pct.items(), key=lambda x: -x[1]):
-        cv = roc_auc_score(y, oof_r[m])
         mark = "✓" if f >= MIN_FREQ else " "
-        print(f"  {mark} {f*100:>5.0f}%  CV={cv:.4f}  {m}")
+        print(f"  {mark} {f*100:>5.0f}%  CV={cvs[m]:.4f}  {m}")
 
     keep = [m for m in models if freq_pct[m] >= MIN_FREQ]
     w = {m: wsum[m] for m in keep}; tot = sum(w.values())
