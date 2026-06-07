@@ -27,7 +27,7 @@ def main():
     oof = np.full(len(y), np.nan); test_sum = np.zeros(len(test_ids))
     for f in range(C.N_FOLDS):
         tri, va = np.where(folds != f)[0], np.where(folds == f)[0]
-        m = RealMLP_TD_Classifier(n_cv=1, n_refinement_epochs=0, random_state=C.SEED, device="cuda", val_metric_name="cross_entropy")
+        m = RealMLP_TD_Classifier(n_cv=1, random_state=C.SEED, device="cuda")
         m.fit(X[tri], y[tri])
         oof[va] = m.predict_proba(X[va])[:, 1]; test_sum += m.predict_proba(Xt)[:, 1]
         print(f"[fold {f}] AUC={roc_auc_score(y[va], oof[va]):.5f}")
