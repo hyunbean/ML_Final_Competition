@@ -13,22 +13,23 @@ from scipy.stats import rankdata
 from . import config as C
 from .oof_io import list_models, load_oof
 
-BAGS = 100
+BAGS = 25
 SUBSAMPLE = 0.8
-N_STEPS = 40
+N_STEPS = 25
 INIT = 3
 MIN_FREQ = 0.5
 POOL_MIN_CV = 0.70
 
 
 def _aucs(mat, ypos):
-    """mat (n,k) 각 열의 AUC 벡터화. ypos=bool(양성). 동률무시 근사."""
+    """mat (n,k) 각 열의 AUC. 단일 argsort + 양성 랭크합 (동률무시 근사)."""
     n = mat.shape[0]
     npos = int(ypos.sum()); nneg = n - npos
     if npos == 0 or nneg == 0:
         return np.full(mat.shape[1], 0.5)
-    ranks = mat.argsort(0).argsort(0)            # 0-indexed rank per column
-    rpos = ranks[ypos].sum(0)                     # 양성 랭크합 (k,)
+    order = np.argsort(mat, axis=0)                # (n,k) 점수 오름차순 인덱스
+    ys = ypos[order]                               # 정렬된 양성마스크
+    rpos = (np.arange(n)[:, None] * ys).sum(0)     # 양성 0-indexed 랭크합
     return (rpos - npos * (npos - 1) / 2.0) / (npos * nneg)
 
 
