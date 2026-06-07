@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.71186943886053,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "1등 FE feature-bag(0.6) cat",
+  "created_by": "hyunbean",
+  "notes": "feature-bagging GBDT for decorrelation"
+}
