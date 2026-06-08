@@ -40,24 +40,28 @@ def _teacher(kind, test_ids):
     return mat, avail
 
 
-def _fit(kind, Xtr, ytr, Xva, yva, Xt):
+SEEDS = [int(s) for s in os.environ.get("PL_SEEDS", str(C.SEED)).split(",")]   # 멀티시드 평균(분산감소)
+
+
+def _fit(kind, Xtr, ytr, Xva, yva, Xt, seed=None):
     import xgboost as xgb, lightgbm as lgb
     from catboost import CatBoostClassifier
+    sd = C.SEED if seed is None else seed
     if kind == "xgb":
         m = xgb.XGBClassifier(n_estimators=4000, early_stopping_rounds=150, objective="binary:logistic",
                               eval_metric="auc", learning_rate=0.02, max_depth=7, min_child_weight=5, gamma=0.1,
                               subsample=0.8, colsample_bytree=0.7, reg_alpha=1.0, reg_lambda=5.0,
-                              random_state=C.SEED, tree_method="hist", device="cuda" if GPU else "cpu")
+                              random_state=sd, tree_method="hist", device="cuda" if GPU else "cpu")
         m.fit(Xtr, ytr, eval_set=[(Xva, yva)], verbose=False)
     elif kind == "lgbm":
         m = lgb.LGBMClassifier(n_estimators=4000, objective="binary", metric="auc", learning_rate=0.02,
                                num_leaves=64, min_child_samples=40, subsample=0.8, subsample_freq=1,
                                colsample_bytree=0.7, reg_alpha=1.0, reg_lambda=5.0, n_jobs=-1,
-                               random_state=C.SEED, verbose=-1)
+                               random_state=sd, verbose=-1)
         m.fit(Xtr, ytr, eval_set=[(Xva, yva)], callbacks=[lgb.early_stopping(150, verbose=False)])
     else:
         m = CatBoostClassifier(iterations=2000, learning_rate=0.03, depth=7, l2_leaf_reg=5, eval_metric="AUC",
-                               random_seed=C.SEED, verbose=0, allow_writing_files=False,
+                               random_seed=sd, verbose=0, allow_writing_files=False,
                                task_type="GPU" if GPU else "CPU")
         m.fit(Xtr, ytr, eval_set=(Xva, yva), early_stopping_rounds=150)
     return m.predict_proba(Xva)[:, 1], m.predict_proba(Xt)[:, 1]
@@ -76,13 +80,17 @@ def run(kind, X, Xt, y, folds, test_ids):
     Xp = Xt[conf.tolist()]
     print(f"[{kind}] teacher={avail} | {mode} pseudo {conf.sum()}/{len(mean)} (pos {pl_y.mean():.2f}) HI/LO={HI}/{LO}")
     oof = np.full(len(y), np.nan); test_sum = np.zeros(len(test_ids))
+    multi = "_ms" if len(SEEDS) > 1 else ""
     for f in range(C.N_FOLDS):
         tri, va = np.where(folds != f)[0], np.where(folds == f)[0]
         Xtr = pd.concat([X.iloc[tri], Xp], axis=0); ytr = np.concatenate([y[tri], pl_y])
-        vp, tp = _fit(kind, Xtr, ytr, X.iloc[va], y[va], Xt)
-        oof[va] = vp; test_sum += tp
-        print(f"  [fold {f}] AUC={roc_auc_score(y[va], vp):.5f}")
-    cv = float(roc_auc_score(y, oof)); name = f"first_{kind}{SUF}"
+        vps = np.zeros(len(va)); tps = np.zeros(len(test_ids))
+        for sd in SEEDS:                                # 시드 평균(분산감소)
+            vp, tp = _fit(kind, Xtr, ytr, X.iloc[va], y[va], Xt, seed=sd)
+            vps += vp / len(SEEDS); tps += tp / len(SEEDS)
+        oof[va] = vps; test_sum += tps
+        print(f"  [fold {f}] AUC={roc_auc_score(y[va], vps):.5f}")
+    cv = float(roc_auc_score(y, oof)); name = f"first_{kind}{SUF}{multi}"
     print(f"==== {name}  CV={cv:.5f} ====")
     save_predictions(name, oof, test_sum / C.N_FOLDS, meta=dict(cv_auc=cv, seed=C.SEED, n_folds=C.N_FOLDS,
                      feature_set="1등FE + strict pseudo", created_by="hyunbean",
