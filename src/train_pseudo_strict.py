@@ -29,9 +29,13 @@ TEACH = {
 }
 
 
+CONSENSUS = os.environ.get("PL_CONSENSUS", "0") == "1"   # 모든 teacher 합의시만 pseudo (편향학습 방지)
+
+
 def _teacher(kind, test_ids):
     avail = [m for m in TEACH[kind] if os.path.exists(f"artifacts/oof/{m}__test.npy")]
-    return np.mean([rankdata(np.load(f"artifacts/oof/{m}__test.npy")) / len(test_ids) for m in avail], axis=0), avail
+    mat = np.column_stack([rankdata(np.load(f"artifacts/oof/{m}__test.npy")) / len(test_ids) for m in avail])
+    return mat, avail
 
 
 def _fit(kind, Xtr, ytr, Xva, yva, Xt):
@@ -58,11 +62,17 @@ def _fit(kind, Xtr, ytr, Xva, yva, Xt):
 
 
 def run(kind, X, Xt, y, folds, test_ids):
-    sub, avail = _teacher(kind, test_ids)
-    conf = (sub >= HI) | (sub <= LO)
-    pl_y = (sub[conf] >= 0.5).astype(int)
+    mat, avail = _teacher(kind, test_ids)
+    mean = mat.mean(1)
+    if CONSENSUS:                                  # 모든 teacher가 HI이상(또는 LO이하) 합의시만
+        pos = (mat >= HI).all(1); neg = (mat <= LO).all(1)
+        conf = pos | neg; pl_y = pos[conf].astype(int)
+        mode = "consensus(all agree)"
+    else:
+        conf = (mean >= HI) | (mean <= LO); pl_y = (mean[conf] >= 0.5).astype(int)
+        mode = "mean"
     Xp = Xt[conf.tolist()]
-    print(f"[{kind}] teacher={avail} | pseudo {conf.sum()}/{len(sub)} (pos {pl_y.mean():.2f}) HI/LO={HI}/{LO}")
+    print(f"[{kind}] teacher={avail} | {mode} pseudo {conf.sum()}/{len(mean)} (pos {pl_y.mean():.2f}) HI/LO={HI}/{LO}")
     oof = np.full(len(y), np.nan); test_sum = np.zeros(len(test_ids))
     for f in range(C.N_FOLDS):
         tri, va = np.where(folds != f)[0], np.where(folds == f)[0]
