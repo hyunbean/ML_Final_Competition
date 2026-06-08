@@ -241,6 +241,25 @@ def build_cooc(df, dim=24, mincust=10):
     return R
 
 
+def build_emb(df, dim=32):
+    """goodcd 시퀀스 W2V + FastText 임베딩 → 고객 평균 (교수힌트 #1 W2V +0.00033, #3 FastText +0.00089).
+    FastText는 goodcd 코드의 subword(접두사 계층)까지 학습 = W2V와 다른 신호. train+test 전체."""
+    from gensim.models import Word2Vec, FastText
+    d = df.copy(); d["goodcd"] = d["goodcd"].astype(str)
+    junk = d["goodcd"].eq("2700000000000") | d["pc_nm"].astype(str).eq("미확인pc") | d["corner_nm"].astype(str).eq("용기보증")
+    d = d[~junk].sort_values(["custid", "sales_datetime"])
+    seqs = d.groupby("custid")["goodcd"].apply(list)
+    sents = seqs.tolist()
+    blocks = []
+    for Model, pref in [(Word2Vec, "w2v"), (FastText, "ft")]:
+        m = Model(sents, vector_size=dim, window=5, min_count=3, workers=4, sg=1, epochs=10, seed=42)
+        wv = m.wv
+        vecs = [np.mean([wv[g] for g in s if g in wv] or [np.zeros(dim)], axis=0) for s in seqs]
+        blocks.append(pd.DataFrame(vecs, index=seqs.index).add_prefix(f"{pref}_goodcd_"))
+    R = pd.concat(blocks, axis=1); R.index.name = "custid"
+    return R
+
+
 # ---------- 10. 할인+피크 ----------
 def build_discpeak(df):
     d = df.copy(); d["sales_time"] = d["sales_time"].fillna(0).astype(int); d["dp_hour"] = d["sales_time"] // 100
@@ -428,6 +447,9 @@ def build_all():
     if os.environ.get("KML_COOC") == "1":          # test-aware goodcd 동시출현(GPT #2). 검증전까진 env로 분리
         allf = allf.join(build_cooc(full), how="left")
         print("  +cooc (test-aware goodcd PPMI)")
+    if os.environ.get("KML_EMB") == "1":           # 교수힌트 #1 W2V + #3 FastText goodcd 임베딩
+        allf = allf.join(build_emb(full), how="left")
+        print("  +emb (W2V + FastText goodcd)")
     # NOTE: build_household — CV 하락(-0.0019) → 제외
     # NOTE: build_brandmeta + goodcd접두사TE — CV -0.00065(데이터TE에 흡수) → 제외
     # NOTE: build_giftkr(한국명절 어버이날/추석/설/빼빼로) — CV -0.00028(캘린더+카테고리TE에 흡수) → 제외
