@@ -18,11 +18,14 @@ from .train_first import build_all
 HI = float(os.environ.get("PL_HI", "0.90"))
 LO = float(os.environ.get("PL_LO", "0.10"))
 GPU = os.environ.get("XGB_GPU", "1") == "1"
-# teacher: 각 student와 격리되게 구성 (mega 독립피처 위주 + 타계열)
+ITER = os.environ.get("PL_ITER", "0") == "1"   # 반복pseudo: teacher에 1라운드 pl2 추가(라벨품질↑) → pl3
+SUF = "_pl3" if ITER else "_pl2"
+# teacher: 각 student와 격리되게 구성 (mega 독립피처 위주 + 타계열). ITER이면 pl2도 teacher에.
+_EXTRA = ["first_xgb_pl2", "first_lgbm_pl2"] if ITER else []
 TEACH = {
-    "xgb": ["mh_bestblend69", "mh_05_AutoGluon_megamax", "mh_07_AutoGluon_mega572", "mh_09_XGBoost_mega", "first_lgbm", "first_cat"],
-    "lgbm": ["mh_bestblend69", "mh_05_AutoGluon_megamax", "mh_07_AutoGluon_mega572", "mh_11_CatBoost_mega", "first_xgb", "first_cat"],
-    "cat": ["mh_bestblend69", "mh_05_AutoGluon_megamax", "mh_07_AutoGluon_mega572", "mh_09_XGBoost_mega", "first_xgb", "first_lgbm"],
+    "xgb": ["mh_bestblend69", "mh_05_AutoGluon_megamax", "mh_07_AutoGluon_mega572", "mh_09_XGBoost_mega", "first_lgbm", "first_cat"] + _EXTRA,
+    "lgbm": ["mh_bestblend69", "mh_05_AutoGluon_megamax", "mh_07_AutoGluon_mega572", "mh_11_CatBoost_mega", "first_xgb", "first_cat"] + _EXTRA,
+    "cat": ["mh_bestblend69", "mh_05_AutoGluon_megamax", "mh_07_AutoGluon_mega572", "mh_09_XGBoost_mega", "first_xgb", "first_lgbm"] + _EXTRA,
 }
 
 
@@ -67,7 +70,7 @@ def run(kind, X, Xt, y, folds, test_ids):
         vp, tp = _fit(kind, Xtr, ytr, X.iloc[va], y[va], Xt)
         oof[va] = vp; test_sum += tp
         print(f"  [fold {f}] AUC={roc_auc_score(y[va], vp):.5f}")
-    cv = float(roc_auc_score(y, oof)); name = f"first_{kind}_pl2"
+    cv = float(roc_auc_score(y, oof)); name = f"first_{kind}{SUF}"
     print(f"==== {name}  CV={cv:.5f} ====")
     save_predictions(name, oof, test_sum / C.N_FOLDS, meta=dict(cv_auc=cv, seed=C.SEED, n_folds=C.N_FOLDS,
                      feature_set="1등FE + strict pseudo", created_by="hyunbean",
