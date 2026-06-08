@@ -1,11 +1,11 @@
 """작년 1등 솔루션 피처셋 + 튜닝 CatBoost → 5-fold OOF 베이스모델 'first_cat'.
-import os
 
 1등 노트북(2025 ML Pipeline Hackathon)의 FE를 그대로 포팅(우리 sales_datetime→date/time 파생).
 우리 기존 피처와 구성이 달라(dwell/buyer/social/recent-K/수작업 성별파트) 결이 다른 멤버 기대.
 TE는 내부 KFold로 leak-safe, 모델 OOF는 우리 folds.npy 사용.
 실행: pip install catboost → python -m src.folds → python -m src.train_first
 """
+import os
 import re
 import numpy as np
 import pandas as pd
