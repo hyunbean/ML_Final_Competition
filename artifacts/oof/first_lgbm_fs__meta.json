@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.7153624102291826,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "1등FE 중요도/상관 선택 448feat",
+  "created_by": "hyunbean",
+  "notes": "교수힌트#2 feature selection DROP0.4 CORR0.95"
+}
