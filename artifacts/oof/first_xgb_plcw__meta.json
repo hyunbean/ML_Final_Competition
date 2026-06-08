@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.7176765367831389,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "1등FE + soft pseudo(teacher확률 타겟)",
+  "created_by": "hyunbean",
+  "notes": "soft pseudo-labeling, 불확실성 보존"
+}
