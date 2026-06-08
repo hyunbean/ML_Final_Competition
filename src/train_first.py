@@ -1,4 +1,5 @@
 """작년 1등 솔루션 피처셋 + 튜닝 CatBoost → 5-fold OOF 베이스모델 'first_cat'.
+import os
 
 1등 노트북(2025 ML Pipeline Hackathon)의 FE를 그대로 포팅(우리 sales_datetime→date/time 파생).
 우리 기존 피처와 구성이 달라(dwell/buyer/social/recent-K/수작업 성별파트) 결이 다른 멤버 기대.
@@ -423,8 +424,10 @@ def build_all():
             .join(bs, how="left").join(cs, how="left").join(gs, how="left").join(te_feats, how="left")
             .join(build_discpeak(full), how="left").join(build_refund(full), how="left")
             .join(build_dwell(full), how="left").join(build_social(full), how="left")
-            .join(build_recent(full, 5), how="left").join(build_recent(full, 3), how="left")
-            .join(build_cooc(full), how="left"))   # test-aware goodcd 동시출현 PPMI (GPT조언, 테스트중)
+            .join(build_recent(full, 5), how="left").join(build_recent(full, 3), how="left"))
+    if os.environ.get("KML_COOC") == "1":          # test-aware goodcd 동시출현(GPT #2). 검증전까진 env로 분리
+        allf = allf.join(build_cooc(full), how="left")
+        print("  +cooc (test-aware goodcd PPMI)")
     # NOTE: build_household — CV 하락(-0.0019) → 제외
     # NOTE: build_brandmeta + goodcd접두사TE — CV -0.00065(데이터TE에 흡수) → 제외
     # NOTE: build_giftkr(한국명절 어버이날/추석/설/빼빼로) — CV -0.00028(캘린더+카테고리TE에 흡수) → 제외
