@@ -265,6 +265,19 @@ def build_emb(df, w2v_dim=32, ft_dim=48):
             mx[i] = vs.max(0); sd[i] = vs.std(0)
         for tag, arr in [("wm", wm), ("mx", mx), ("sd", sd)]:
             blocks.append(pd.DataFrame(arr, index=seqs.index).add_prefix(f"{pref}{tag}_gc_"))
+    # #1 Doc2Vec: 고객을 직접 임베딩 (집계 불필요)
+    from gensim.models.doc2vec import Doc2Vec, TaggedDocument
+    docs = [TaggedDocument(s, [str(c)]) for c, s in seqs.items()]
+    dm = Doc2Vec(docs, vector_size=24, window=5, min_count=3, workers=4, epochs=15, seed=42)
+    d2v = np.array([dm.dv[str(c)] for c in seqs.index])
+    blocks.append(pd.DataFrame(d2v, index=seqs.index).add_prefix("d2v_gc_"))
+    # #4 brand/corner 임베딩 (W2V mean, 작은 dim)
+    for col, cdim in [("brd_nm", 16), ("corner_nm", 16)]:
+        cs = df.sort_values([C.ID_COL, "sales_datetime"]).groupby(C.ID_COL)[col].apply(lambda x: [str(v) for v in x])
+        mc = Word2Vec(cs.tolist(), vector_size=cdim, window=5, min_count=3, workers=4, sg=1, epochs=8, seed=42)
+        wv = mc.wv
+        vm = np.array([np.mean([wv[g] for g in s if g in wv] or [np.zeros(cdim)], axis=0) for s in cs.values])
+        blocks.append(pd.DataFrame(vm, index=cs.index).add_prefix(f"w2v_{col}_"))
     R = pd.concat(blocks, axis=1); R.index.name = "custid"
     return R
 
