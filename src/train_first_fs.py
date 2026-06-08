@@ -56,7 +56,8 @@ def _fit(kind, Xtr, ytr, Xva, yva, Xt):
         m.fit(Xtr, ytr, eval_set=[(Xva, yva)], callbacks=[lgb.early_stopping(150, verbose=False)])
     else:
         m = CatBoostClassifier(iterations=1658, learning_rate=0.0107, depth=7, l2_leaf_reg=13.9, subsample=0.708,
-                               colsample_bylevel=0.818, min_data_in_leaf=39, random_strength=3.15, eval_metric="AUC",
+                               bootstrap_type="Bernoulli", colsample_bylevel=0.818, min_data_in_leaf=39,
+                               random_strength=3.15, eval_metric="AUC",
                                random_seed=C.SEED, verbose=0, allow_writing_files=False, task_type=CB)
         m.fit(Xtr, ytr)
     return m.predict_proba(Xva)[:, 1], m.predict_proba(Xt)[:, 1]
