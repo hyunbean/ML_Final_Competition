@@ -241,21 +241,30 @@ def build_cooc(df, dim=24, mincust=10):
     return R
 
 
-def build_emb(df, dim=32):
-    """goodcd 시퀀스 W2V + FastText 임베딩 → 고객 평균 (교수힌트 #1 W2V +0.00033, #3 FastText +0.00089).
-    FastText는 goodcd 코드의 subword(접두사 계층)까지 학습 = W2V와 다른 신호. train+test 전체."""
+def build_emb(df, w2v_dim=32, ft_dim=48):
+    """goodcd 시퀀스 W2V + FastText → 고객 임베딩 (교수힌트 #1 W2V +0.00033, #3 FastText +0.00089).
+    GPT조언: TF-IDF가중mean + max + std 집계(mean단독은 공통상품에 끌림). FastText subword=접두사계층."""
     from gensim.models import Word2Vec, FastText
     d = df.copy(); d["goodcd"] = d["goodcd"].astype(str)
     junk = d["goodcd"].eq("2700000000000") | d["pc_nm"].astype(str).eq("미확인pc") | d["corner_nm"].astype(str).eq("용기보증")
     d = d[~junk].sort_values(["custid", "sales_datetime"])
     seqs = d.groupby("custid")["goodcd"].apply(list)
-    sents = seqs.tolist()
+    N = len(seqs); dfreq = d.groupby("goodcd")["custid"].nunique()
+    idf = np.log(N / (dfreq + 1.0)).to_dict()
     blocks = []
-    for Model, pref in [(Word2Vec, "w2v"), (FastText, "ft")]:
-        m = Model(sents, vector_size=dim, window=5, min_count=3, workers=4, sg=1, epochs=10, seed=42)
+    for Model, pref, dim in [(Word2Vec, "w2v", w2v_dim), (FastText, "ft", ft_dim)]:
+        m = Model(sents := seqs.tolist(), vector_size=dim, window=5, min_count=3, workers=4, sg=1, epochs=10, seed=42)
         wv = m.wv
-        vecs = [np.mean([wv[g] for g in s if g in wv] or [np.zeros(dim)], axis=0) for s in seqs]
-        blocks.append(pd.DataFrame(vecs, index=seqs.index).add_prefix(f"{pref}_goodcd_"))
+        wm = np.zeros((N, dim)); mx = np.zeros((N, dim)); sd = np.zeros((N, dim))
+        for i, s in enumerate(seqs.values):
+            vs = np.array([wv[g] for g in s if g in wv], dtype=np.float32)
+            if len(vs) == 0:
+                continue
+            w = np.array([idf.get(g, 1.0) for g in s if g in wv], dtype=np.float32)
+            wm[i] = (vs * w[:, None]).sum(0) / (w.sum() + 1e-9)         # TF-IDF(IDF)가중 평균
+            mx[i] = vs.max(0); sd[i] = vs.std(0)
+        for tag, arr in [("wm", wm), ("mx", mx), ("sd", sd)]:
+            blocks.append(pd.DataFrame(arr, index=seqs.index).add_prefix(f"{pref}{tag}_gc_"))
     R = pd.concat(blocks, axis=1); R.index.name = "custid"
     return R
 
