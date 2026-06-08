@@ -19,7 +19,8 @@ HI = float(os.environ.get("PL_HI", "0.90"))
 LO = float(os.environ.get("PL_LO", "0.10"))
 GPU = os.environ.get("XGB_GPU", "1") == "1"
 ITER = os.environ.get("PL_ITER", "0") == "1"   # 반복pseudo: teacher에 1라운드 pl2 추가(라벨품질↑) → pl3
-SUF = "_pl3" if ITER else "_pl2"
+_CONS = os.environ.get("PL_CONSENSUS", "0") == "1"
+SUF = "_plc" if _CONS else ("_pl3" if ITER else "_pl2")   # consensus는 별도이름(plc)
 # teacher: 각 student와 격리되게 구성 (mega 독립피처 위주 + 타계열). ITER이면 pl2도 teacher에.
 _EXTRA = ["first_xgb_pl2", "first_lgbm_pl2"] if ITER else []
 TEACH = {
