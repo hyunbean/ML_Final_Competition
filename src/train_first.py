@@ -331,6 +331,32 @@ def build_household(df):
     return R
 
 
+def build_giftkr(df):
+    """한국 명절 gift-window (어버이날/추석/설/빼빼로/어린이날) — 대리·교차성별 선물 신호.
+    서양명절만 있던 gift-season의 한국판. 선물기간×선물성카테고리 = 가족대표/교차성별 단서(누수아님,달력)."""
+    d = df[[C.ID_COL, "sales_datetime", "tot_amt", "part_nm", "pc_nm", "corner_nm"]].copy()
+    dt = pd.to_datetime(d["sales_datetime"], errors="coerce")
+    md = dt.dt.strftime("%m-%d")
+    w = d["tot_amt"].clip(lower=0); gid = d[C.ID_COL]; tot = w.groupby(gid).sum() + 1.0
+    win = {
+        "parents": ((md >= "04-28") & (md <= "05-08")),                       # 어버이날·어린이날(자식↔부모)
+        "pepero": ((md >= "11-05") & (md <= "11-11")),                        # 빼빼로데이(교차성별)
+        "chuseok": ((dt >= "2017-09-20") & (dt <= "2017-10-06")),             # 추석2017(가족선물)
+        "seollal": ((dt >= "2018-01-28") & (dt <= "2018-02-17")),             # 설날2018(가족선물)
+    }
+    giftcat = (d["part_nm"].astype(str) + d["pc_nm"].astype(str) + d["corner_nm"].astype(str)).str.contains(
+        "화장품|향수|주얼리|시계|상품권|건강|홍삼|선물|기프트|넥타이|지갑|벨트", regex=True)
+    out = {}; anyg = pd.Series(False, index=d.index)
+    for k, m in win.items():
+        m = m.fillna(False); out[f"gk_{k}"] = (w * m).groupby(gid).sum() / tot
+        anyg = anyg | m
+    out["gk_any"] = (w * anyg).groupby(gid).sum() / tot
+    out["gk_giftcat"] = (w * anyg.values * giftcat.values).groupby(gid).sum() / tot   # 선물기간×선물카테고리
+    out["gk_giftcat_off"] = (w * (~anyg).values * giftcat.values).groupby(gid).sum() / tot  # 비선물기간 선물카테고리(자기용)
+    R = pd.DataFrame(out); R.index.name = "custid"
+    return R
+
+
 def build_brandmeta(df):
     """외부 브랜드지식(brand_meta.csv: gender/age/price/kids/luxury/sports/cosmetic) 금액가중 평균.
     강모델(build_all)이 미사용하던 하드라벨 사전확률 → 데이터TE와 다른 신호(특히 희귀브랜드). 누수아님(외부지식).
@@ -373,7 +399,8 @@ def build_all():
             .join(bs, how="left").join(cs, how="left").join(gs, how="left").join(te_feats, how="left")
             .join(build_discpeak(full), how="left").join(build_refund(full), how="left")
             .join(build_dwell(full), how="left").join(build_social(full), how="left")
-            .join(build_recent(full, 5), how="left").join(build_recent(full, 3), how="left"))
+            .join(build_recent(full, 5), how="left").join(build_recent(full, 3), how="left")
+            .join(build_giftkr(full), how="left"))     # 한국명절 gift-window (옵션1 테스트중)
     # NOTE: build_household — CV 하락(-0.0019) → 제외
     # NOTE: build_brandmeta(외부 brand gender prior) + goodcd접두사TE — bm+gc CV -0.00065(단일AUC<0.57,데이터TE에 흡수) → 제외
     allf.index.name = "custid"; allf = allf.fillna(0)
