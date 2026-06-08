@@ -16,6 +16,8 @@ from .train_first import build_all
 
 GPU = os.environ.get("XGB_GPU", "1") == "1"
 CONF = float(os.environ.get("PL_CONF", "0.15"))   # |p-0.5|>=CONF 인 test만 soft pseudo (0이면 전체)
+CW = os.environ.get("PL_CW", "0") == "1"           # confidence-weight: pseudo 샘플 weight=|p-0.5|*2 (GPT조언)
+HARD = os.environ.get("PL_HARD", "0") == "1"        # CW와 함께 쓰면 hard라벨+conf weight
 TEACH = ["mh_bestblend69", "mh_05_AutoGluon_megamax", "mh_07_AutoGluon_mega572",
          "mh_09_XGBoost_mega", "first_lgbm", "first_cat"]
 
@@ -33,7 +35,11 @@ def main():
     soft = np.mean([np.load(f"artifacts/oof/{m}__test.npy") for m in avail], axis=0)   # teacher 평균확률(soft)
     sel = np.abs(soft - 0.5) >= CONF
     Xp = Xt[sel.tolist()]; soft_y = soft[sel]
-    print(f"teacher={avail} | soft pseudo {sel.sum()}/{len(soft)} (CONF>={CONF})")
+    if HARD:
+        soft_y = (soft_y >= 0.5).astype(float)                       # hard 라벨
+    w_pseudo = (np.abs(soft[sel] - 0.5) * 2) if CW else np.ones(sel.sum())  # confidence weight
+    name_suf = ("_plcw" if CW and HARD else ("_plsw" if CW else "_pls"))
+    print(f"teacher={avail} | pseudo {sel.sum()}/{len(soft)} CONF>={CONF} CW={CW} HARD={HARD} -> {name_suf}")
 
     params = dict(objective="binary:logistic", eval_metric="auc", eta=0.02, max_depth=7,
                   min_child_weight=5, gamma=0.1, subsample=0.8, colsample_bytree=0.7,
@@ -43,8 +49,9 @@ def main():
     for f in range(C.N_FOLDS):
         tri, va = np.where(folds != f)[0], np.where(folds == f)[0]
         Xtr = pd.concat([X.iloc[tri], Xp], axis=0)
-        ytr = np.concatenate([y[tri], soft_y])                      # 진짜라벨(0/1) + soft(확률)
-        dtr = xgb.DMatrix(Xtr, label=ytr); dva = xgb.DMatrix(X.iloc[va], label=y[va])
+        ytr = np.concatenate([y[tri], soft_y])                      # 진짜라벨(0/1) + soft/hard
+        wtr = np.concatenate([np.ones(len(tri)), w_pseudo])         # 진짜=1, pseudo=confidence weight
+        dtr = xgb.DMatrix(Xtr, label=ytr, weight=wtr); dva = xgb.DMatrix(X.iloc[va], label=y[va])
         dt = xgb.DMatrix(Xt)
         bst = xgb.train(params, dtr, num_boost_round=4000, evals=[(dva, "v")],
                         early_stopping_rounds=150, verbose_eval=False)
@@ -52,7 +59,7 @@ def main():
         print(f"[fold {f}] AUC={roc_auc_score(y[va], oof[va]):.5f}")
     cv = float(roc_auc_score(y, oof))
     print(f"\n==== first_xgb_pls  CV={cv:.5f} ====")
-    save_predictions("first_xgb_pls", oof, test_sum / C.N_FOLDS, meta=dict(cv_auc=cv, seed=C.SEED,
+    save_predictions(f"first_xgb{name_suf}", oof, test_sum / C.N_FOLDS, meta=dict(cv_auc=cv, seed=C.SEED,
                      n_folds=C.N_FOLDS, feature_set="1등FE + soft pseudo(teacher확률 타겟)",
                      created_by="hyunbean", notes="soft pseudo-labeling, 불확실성 보존"))
 
