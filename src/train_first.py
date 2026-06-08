@@ -252,9 +252,12 @@ def build_emb(df, w2v_dim=32, ft_dim=48):
     N = len(seqs); dfreq = d.groupby("goodcd")["custid"].nunique()
     idf = np.log(N / (dfreq + 1.0)).to_dict()
     blocks = []
+    goodcd_w2v_wv = None
     for Model, pref, dim in [(Word2Vec, "w2v", w2v_dim), (FastText, "ft", ft_dim)]:
         m = Model(sents := seqs.tolist(), vector_size=dim, window=5, min_count=3, workers=4, sg=1, epochs=10, seed=42)
         wv = m.wv
+        if pref == "w2v":
+            goodcd_w2v_wv = wv
         wm = np.zeros((N, dim)); mx = np.zeros((N, dim)); sd = np.zeros((N, dim))
         for i, s in enumerate(seqs.values):
             vs = np.array([wv[g] for g in s if g in wv], dtype=np.float32)
@@ -278,6 +281,21 @@ def build_emb(df, w2v_dim=32, ft_dim=48):
         wv = mc.wv
         vm = np.array([np.mean([wv[g] for g in s if g in wv] or [np.zeros(cdim)], axis=0) for s in cs.values])
         blocks.append(pd.DataFrame(vm, index=cs.index).add_prefix(f"w2v_{col}_"))
+    # GPT Q1: NN "유사 feature" — goodcd 임베딩 KMeans 군집 → 고객 군집노출도(비슷한 상품군 묶음)
+    from sklearn.cluster import MiniBatchKMeans
+    gw2v = goodcd_w2v_wv                                       # 위 루프서 저장한 W2V wv
+    vocab = [g for g in gw2v.index_to_key]
+    gv = np.array([gw2v[g] for g in vocab])
+    km = MiniBatchKMeans(n_clusters=40, random_state=42, n_init=3).fit(gv)
+    g2c = dict(zip(vocab, km.labels_))
+    rows = np.zeros((N, 40))
+    for i, s in enumerate(seqs.values):
+        for g in s:
+            c = g2c.get(g)
+            if c is not None:
+                rows[i, c] += 1
+    rows = rows / (rows.sum(1, keepdims=True) + 1e-9)          # 군집 노출 분포
+    blocks.append(pd.DataFrame(rows, index=seqs.index).add_prefix("gcclu_"))
     R = pd.concat(blocks, axis=1); R.index.name = "custid"
     return R
 
