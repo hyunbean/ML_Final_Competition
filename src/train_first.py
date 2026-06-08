@@ -216,6 +216,30 @@ def build_goodcd_svd(df):
     return gs
 
 
+def build_cooc(df, dim=24, mincust=10):
+    """train+test goodcd 동시출현 PPMI→SVD→고객임베딩 (test-aware co-occurrence, GPT조언 #2).
+    W2V/SVD/cluster와 달리 item-item PMI 그래프 = 다른 구성. 전체데이터(test포함) 사용=transductive."""
+    from scipy.sparse import csr_matrix
+    d = df.copy(); d["goodcd"] = d["goodcd"].astype(str)
+    junk = d["goodcd"].eq("2700000000000") | d["pc_nm"].astype(str).eq("미확인pc") | d["corner_nm"].astype(str).eq("용기보증")
+    d = d[~junk]
+    vc = d["goodcd"].value_counts(); keep = set(vc[vc >= mincust].index)   # 희귀 goodcd 제거(메모리/노이즈)
+    d = d[d["goodcd"].isin(keep)]
+    cust = d["custid"].astype("category"); good = d["goodcd"].astype("category")
+    M = csr_matrix((np.ones(len(d), np.float32), (cust.cat.codes.values, good.cat.codes.values)),
+                   shape=(len(cust.cat.categories), len(good.cat.categories)))
+    M.sum_duplicates(); M.data[:] = 1.0                                    # 고객별 goodcd 존재(binary)
+    C = (M.T @ M).tocoo().astype(np.float64)                               # goodcd×goodcd 동시출현
+    N = C.data.sum(); s = np.asarray(csr_matrix((C.data, (C.row, C.col)), shape=C.shape).sum(1)).ravel()
+    pmi = np.log((C.data * N) / (s[C.row] * s[C.col] + 1e-9) + 1e-12); pmi[pmi < 0] = 0.0   # PPMI
+    P = csr_matrix((pmi, (C.row, C.col)), shape=C.shape)
+    V = TruncatedSVD(dim, random_state=42).fit_transform(P)                # goodcd 임베딩
+    cnt = np.asarray(M.sum(1)).ravel() + 1e-9
+    cv = (M @ V) / cnt[:, None]                                            # 고객=goodcd벡터 평균
+    R = pd.DataFrame(cv, index=cust.cat.categories).add_prefix("cooc_"); R.index.name = "custid"
+    return R
+
+
 # ---------- 10. 할인+피크 ----------
 def build_discpeak(df):
     d = df.copy(); d["sales_time"] = d["sales_time"].fillna(0).astype(int); d["dp_hour"] = d["sales_time"] // 100
@@ -399,7 +423,8 @@ def build_all():
             .join(bs, how="left").join(cs, how="left").join(gs, how="left").join(te_feats, how="left")
             .join(build_discpeak(full), how="left").join(build_refund(full), how="left")
             .join(build_dwell(full), how="left").join(build_social(full), how="left")
-            .join(build_recent(full, 5), how="left").join(build_recent(full, 3), how="left"))
+            .join(build_recent(full, 5), how="left").join(build_recent(full, 3), how="left")
+            .join(build_cooc(full), how="left"))   # test-aware goodcd 동시출현 PPMI (GPT조언, 테스트중)
     # NOTE: build_household — CV 하락(-0.0019) → 제외
     # NOTE: build_brandmeta + goodcd접두사TE — CV -0.00065(데이터TE에 흡수) → 제외
     # NOTE: build_giftkr(한국명절 어버이날/추석/설/빼빼로) — CV -0.00028(캘린더+카테고리TE에 흡수) → 제외
