@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.7176521699269708,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "1등FE + strict pseudo(격리teacher)",
+  "created_by": "hyunbean",
+  "notes": "strict pseudo-label, teacher=김민형mega+lgbm/cat(xgb격리), val순수"
+}
