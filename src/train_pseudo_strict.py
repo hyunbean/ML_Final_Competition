@@ -21,14 +21,18 @@ GPU = os.environ.get("XGB_GPU", "1") == "1"
 ITER = os.environ.get("PL_ITER", "0") == "1"   # 반복pseudo: teacher에 1라운드 pl2 추가(라벨품질↑) → pl3
 _CONS = os.environ.get("PL_CONSENSUS", "0") == "1"
 _EMB = os.environ.get("KML_EMB", "0") == "1"
-SUF = ("_ple" if _EMB else "") + ("_plc" if _CONS else ("_pl3" if ITER else "_pl2"))  # emb면 _ple접두
-# teacher: 각 student와 격리되게 구성 (mega 독립피처 위주 + 타계열). ITER이면 pl2도 teacher에.
+_BEST = os.environ.get("PL_BEST", "0") == "1"   # #2: best 블렌드 구성요소만 강한 teacher(희석X) → _plb
+SUF = ("_ple" if _EMB else "") + ("_plb" if _BEST else ("_plc" if _CONS else ("_pl3" if ITER else "_pl2")))
 _EXTRA = ["first_xgb_pl2", "first_lgbm_pl2"] if ITER else []
-TEACH = {
-    "xgb": ["mh_bestblend69", "mh_05_AutoGluon_megamax", "mh_07_AutoGluon_mega572", "mh_09_XGBoost_mega", "first_lgbm", "first_cat"] + _EXTRA,
-    "lgbm": ["mh_bestblend69", "mh_05_AutoGluon_megamax", "mh_07_AutoGluon_mega572", "mh_11_CatBoost_mega", "first_xgb", "first_cat"] + _EXTRA,
-    "cat": ["mh_bestblend69", "mh_05_AutoGluon_megamax", "mh_07_AutoGluon_mega572", "mh_09_XGBoost_mega", "first_xgb", "first_lgbm"] + _EXTRA,
-}
+if _BEST:   # 우리 best 블렌드(mh_bestblend69≈73 + pseudo)만 = 강하고 깨끗한 teacher (희석 제거)
+    _BT = ["mh_bestblend69", "first_xgb_pl2", "first_lgbm_pl2", "mh_05_AutoGluon_megamax"]
+    TEACH = {"xgb": _BT, "lgbm": _BT, "cat": _BT}
+else:
+    TEACH = {
+        "xgb": ["mh_bestblend69", "mh_05_AutoGluon_megamax", "mh_07_AutoGluon_mega572", "mh_09_XGBoost_mega", "first_lgbm", "first_cat"] + _EXTRA,
+        "lgbm": ["mh_bestblend69", "mh_05_AutoGluon_megamax", "mh_07_AutoGluon_mega572", "mh_11_CatBoost_mega", "first_xgb", "first_cat"] + _EXTRA,
+        "cat": ["mh_bestblend69", "mh_05_AutoGluon_megamax", "mh_07_AutoGluon_mega572", "mh_09_XGBoost_mega", "first_xgb", "first_lgbm"] + _EXTRA,
+    }
 
 
 CONSENSUS = os.environ.get("PL_CONSENSUS", "0") == "1"   # 모든 teacher 합의시만 pseudo (편향학습 방지)
