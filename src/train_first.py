@@ -399,10 +399,10 @@ def build_all():
             .join(bs, how="left").join(cs, how="left").join(gs, how="left").join(te_feats, how="left")
             .join(build_discpeak(full), how="left").join(build_refund(full), how="left")
             .join(build_dwell(full), how="left").join(build_social(full), how="left")
-            .join(build_recent(full, 5), how="left").join(build_recent(full, 3), how="left")
-            .join(build_giftkr(full), how="left"))     # 한국명절 gift-window (옵션1 테스트중)
+            .join(build_recent(full, 5), how="left").join(build_recent(full, 3), how="left"))
     # NOTE: build_household — CV 하락(-0.0019) → 제외
-    # NOTE: build_brandmeta(외부 brand gender prior) + goodcd접두사TE — bm+gc CV -0.00065(단일AUC<0.57,데이터TE에 흡수) → 제외
+    # NOTE: build_brandmeta + goodcd접두사TE — CV -0.00065(데이터TE에 흡수) → 제외
+    # NOTE: build_giftkr(한국명절 어버이날/추석/설/빼빼로) — CV -0.00028(캘린더+카테고리TE에 흡수) → 제외
     allf.index.name = "custid"; allf = allf.fillna(0)
     allf.columns = [re.sub(r"[^0-9a-zA-Z가-힣_]", "_", str(c)) for c in allf.columns]
     print(f"통합 직후: {allf.shape[1]}")
