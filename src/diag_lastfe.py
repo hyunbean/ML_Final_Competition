@@ -1,10 +1,11 @@
-"""진단: GPT 막판 lastfe(금액 quantile/거래간격/일단위 다양성)가 521에 흡수되나 검증.
+"""진단: 두 AI가 제안한 신규 피처군(lf/gi/mg/lb)이 521에 흡수되나 전수 검증.
 
-lf 단독 AUC + corr(73) + 521 vs 521+lf CV(흡수 여부). GPU 불필요.
+각 그룹 단독 AUC + corr(73) + 521 대비 증분. GPU 불필요.
 실행: python -m src.diag_lastfe
 """
 import os
-os.environ["KML_LASTFE"] = "1"
+for e in ["KML_LASTFE", "KML_GENINT", "KML_MEGA", "KML_LABELFE"]:
+    os.environ[e] = "1"
 import numpy as np
 import pandas as pd
 import lightgbm as lgb
@@ -13,6 +14,9 @@ from scipy.stats import rankdata
 
 from . import config as C
 from .train_first import build_all
+
+GROUPS = {"lf": "lastfe(quantile/gap/daily)", "gi": "genint(성별score interaction)",
+          "mg": "mega(goodcd계층/transition/basket/drift)", "lb": "labelfe(basket충돌/대리구매/tdecay)"}
 
 
 def _cv(X, y, folds):
@@ -31,19 +35,30 @@ def main():
     folds = np.load(C.FOLDS_NPY)
     X = allf.reindex(tr).fillna(0.0)
     y = ydf.set_index("custid").reindex(tr)["gender"].to_numpy()
-    lf = [c for c in X.columns if c.startswith("lf_")]
-    base = [c for c in X.columns if not c.startswith("lf_")]
-    print(f"lf 피처 {len(lf)}개: {lf}")
-    a_lf, oof_lf = _cv(X[lf].values, y, folds)
-    print(f"### lf 단독 AUC = {a_lf:.5f} (>0.6이면 신호 있음)")
-    for m in ["kim73", "first_xgb_pl2"]:
-        p = f"artifacts/oof/{m}__oof.npy"
-        if os.path.exists(p):
-            print(f"    corr(lf, {m}) = {np.corrcoef(rankdata(oof_lf), rankdata(np.load(p)))[0,1]:.4f}")
+    newpref = tuple(GROUPS.keys())
+    base = [c for c in X.columns if not c.startswith(tuple(p + "_" for p in newpref))]
+    pl2 = np.load("artifacts/oof/first_xgb_pl2__oof.npy") if os.path.exists("artifacts/oof/first_xgb_pl2__oof.npy") else None
+    print(f"\n=== 신규 그룹별 단독 검증 (전체 {X.shape[1]} / base {len(base)}) ===")
+    for pre, desc in GROUPS.items():
+        cols = [c for c in X.columns if c.startswith(pre + "_")]
+        if not cols:
+            print(f"  [{pre}] 없음"); continue
+        a, oof = _cv(X[cols].values, y, folds)
+        cs = f" corr(pl2)={np.corrcoef(rankdata(oof), rankdata(pl2))[0,1]:.3f}" if pl2 is not None else ""
+        print(f"  [{pre}] {desc}: {len(cols)}개  단독AUC={a:.5f}{cs}")
     a_base, _ = _cv(X[base].values, y, folds)
-    a_full, _ = _cv(X.values, y, folds)
-    print(f"### 521 단독 CV = {a_base:.5f}  →  521+lf CV = {a_full:.5f}  (증분 {a_full-a_base:+.5f})")
-    print("    증분>0 = 흡수 안됨(추가가치) / <=0 = 흡수")
+    print(f"\n=== 증분 (base CV={a_base:.5f}) ===")
+    # 그룹별 누적 증분
+    cum = list(base)
+    for pre in newpref:
+        cols = [c for c in X.columns if c.startswith(pre + "_")]
+        if not cols:
+            continue
+        cum = cum + cols
+        a, _ = _cv(X[cum].values, y, folds)
+        print(f"  base+{pre} ({len(cols)}개): CV={a:.5f}  (vs base {a-a_base:+.5f})")
+    a_all, _ = _cv(X.values, y, folds)
+    print(f"  base+ALL: CV={a_all:.5f}  (vs base {a_all-a_base:+.5f})")
 
 
 if __name__ == "__main__":

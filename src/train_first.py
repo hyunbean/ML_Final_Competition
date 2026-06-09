@@ -527,6 +527,175 @@ def build_lastfe(full):
     return out.fillna(0)
 
 
+def build_genint(full, y_df, m=20, n=5):
+    """GPT 1순위: transaction별 category gender score(KFold OOF)를 amount-weighted/high-amt/weekend/
+    recent/std/극단비율로 집계. 단순 custid 평균만 했던 우리가 안 한 interaction. leak-safe(custid fold)."""
+    d = full.copy(); d["sales_date"] = pd.to_datetime(d["sales_date"])
+    d["wknd"] = (d["sales_date"].dt.dayofweek >= 5).astype(float)
+    d = d.sort_values(["custid", "sales_date"]).reset_index(drop=True)
+    d["rn"] = d.groupby("custid").cumcount(ascending=False)
+    d["amt"] = d["tot_amt"].fillna(0).clip(lower=0)
+    ydict = dict(zip(y_df["custid"], y_df["gender"])); gm = float(y_df["gender"].mean())
+    base = y_df.reset_index(drop=True); kf = StratifiedKFold(n_splits=n, shuffle=True, random_state=42)
+    blocks = []
+    for col in ["corner_nm", "part_nm"]:
+        d[col] = d[col].fillna("UNKNOWN").astype(str)
+        dg = d[d["dataset"] == "train"].copy(); dg["gender"] = dg["custid"].map(ydict)
+        d["te"] = np.nan
+        for tri, vai in kf.split(base, base["gender"]):
+            ti, vi = set(base.iloc[tri]["custid"]), set(base.iloc[vai]["custid"])
+            st = dg[dg["custid"].isin(ti)].groupby(col)["gender"].agg(["sum", "count"])
+            te = (st["sum"] + m * gm) / (st["count"] + m)
+            vm = (d["dataset"] == "train") & d["custid"].isin(vi)
+            d.loc[vm, "te"] = d.loc[vm, col].map(te).fillna(gm)
+        st = dg.groupby(col)["gender"].agg(["sum", "count"]); te = (st["sum"] + m * gm) / (st["count"] + m)
+        tm = d["dataset"] == "test"; d.loc[tm, "te"] = d.loc[tm, col].map(te).fillna(gm)
+        d["te"] = d["te"].fillna(gm)
+        g = d.groupby("custid"); out = pd.DataFrame(index=g.size().index)
+        p = f"gi_{col}_"
+        out[p + "mean"] = g["te"].mean(); out[p + "std"] = g["te"].std()
+        out[p + "max"] = g["te"].max(); out[p + "min"] = g["te"].min()
+        d["tea"] = d["te"] * d["amt"]
+        out[p + "amtw"] = g["tea"].sum() / (g["amt"].sum() + 1e-5)
+        hq = d["amt"].quantile(0.9)
+        out[p + "hiamt"] = d[d["amt"] >= hq].groupby("custid")["te"].mean()
+        out[p + "wknd"] = d[d["wknd"] == 1].groupby("custid")["te"].mean()
+        out[p + "recent"] = d[d["rn"] < 5].groupby("custid")["te"].mean()
+        out[p + "hi6"] = g["te"].apply(lambda x: (x >= 0.6).mean())
+        out[p + "lo4"] = g["te"].apply(lambda x: (x <= 0.4).mean())
+        blocks.append(out.fillna(gm))
+    R = pd.concat(blocks, axis=1); R.index.name = "custid"
+    return R
+
+
+def build_mega(full):
+    """두 AI 공통 1순위(label-free): goodcd계층 미시취향 + transition + basket조합 + 상대가격 + 드리프트.
+    521(금액/빈도/TE/임베딩)과 직교 의도. label 안 써서 leak 없음."""
+    d = full.copy()
+    d["sales_date"] = pd.to_datetime(d["sales_date"])
+    d["goodcd"] = d["goodcd"].astype(str).str.zfill(13)
+    d["amt"] = d["tot_amt"].fillna(0).clip(lower=0)
+    d["net"] = np.where(d["net_amt"].fillna(0) != 0, d["net_amt"].fillna(0), d["tot_amt"].fillna(0))
+    stt = d["sales_time"].fillna(0).astype(int)
+    d["dt"] = d["sales_date"] + pd.to_timedelta(stt // 100, "h") + pd.to_timedelta(stt % 100, "m")
+    d = d.sort_values(["custid", "dt"]).reset_index(drop=True)
+    for k in [2, 3, 4, 6, 9]:
+        d[f"g{k}"] = d["goodcd"].str[:k]
+    g = d.groupby("custid"); out = pd.DataFrame(index=g.size().index)
+    # 계층 다양성 비율 (대분류 대비 세부 탐색 깊이)
+    out["mg_leaf_conc"] = g["goodcd"].nunique() / (g["g3"].nunique() + 1e-5)
+    out["mg_deep_per_mid"] = g["g9"].nunique() / (g["g4"].nunique() + 1e-5)
+    out["mg_sku_per_cat"] = g["goodcd"].nunique() / (g["g2"].nunique() + 1e-5)
+    out["mg_exact_repeat"] = 1 - g["goodcd"].nunique() / (g["goodcd"].count() + 1e-5)
+    out["mg_newcat_rate"] = g["g2"].nunique() / (g["goodcd"].count() + 1e-5)
+    # HHI (몰빵 vs 분산)
+    for key, nm in [("brd_nm", "brand"), ("g3", "cat")]:
+        s = d.groupby(["custid", key])["amt"].sum(); t = s.groupby("custid").sum()
+        out[f"mg_{nm}_hhi"] = ((s.div(t + 1e-5)) ** 2).groupby("custid").sum()
+    # 카테고리 top1 vs tail
+    s = d.groupby(["custid", "g3"])["amt"].sum(); t = s.groupby("custid").sum(); sh = s.div(t + 1e-5)
+    rk = sh.groupby("custid").rank(ascending=False)
+    out["mg_cat_top1"] = sh[rk == 1].groupby("custid").sum()
+    out["mg_cat_tail4"] = sh[rk >= 4].groupby("custid").sum().reindex(out.index).fillna(0)
+    # transition: g3 전환율
+    d["pg3"] = g["g3"].shift(); out["mg_g3_switch"] = ((d["g3"] != d["pg3"]) & d["pg3"].notna()).groupby(d["custid"]).mean()
+    # 상대가격: 브랜드내 위치 + 카테고리내 percentile
+    d["brel"] = d["net"] / (d.groupby("brd_nm")["net"].transform("mean") + 1e-5)
+    out["mg_brand_relprice"] = g["brel"].mean()
+    d["cpp"] = d.groupby("g3")["net"].rank(pct=True)
+    out["mg_catpricepct"] = g["cpp"].mean()
+    out["mg_catpricepct_hi"] = (d["cpp"] >= 0.8).groupby(d["custid"]).mean()
+    # 카테고리-normalized 할인잔차
+    d["dr"] = d["dis_amt"].fillna(0) / (d["amt"] + 1e-5)
+    d["drr"] = d["dr"] - d.groupby("g3")["dr"].transform("mean")
+    out["mg_disc_resid"] = g["drr"].mean()
+    # 노할인 고가품
+    hq = d["net"].quantile(0.9)
+    out["mg_unlux_rate"] = ((d["dis_amt"].fillna(0) == 0) & (d["net"] >= hq)).groupby(d["custid"]).mean()
+    # spending velocity (후반/전반)
+    pos = g.cumcount(); tot = g["goodcd"].transform("count"); d["half2"] = (pos / tot) >= 0.5
+    v2 = d[d["half2"]].groupby("custid")["amt"].sum(); v1 = d[~d["half2"]].groupby("custid")["amt"].sum()
+    out["mg_velocity"] = (v2 / (v1 + 1e-5)).reindex(out.index).fillna(1.0)
+    # 방문주기 불규칙성
+    dd = d[["custid", "sales_date"]].drop_duplicates().sort_values(["custid", "sales_date"])
+    dd["gap"] = dd.groupby("custid")["sales_date"].diff().dt.days
+    out["mg_gap_var"] = dd.groupby("custid")["gap"].var()
+    out["mg_gap_skew"] = dd.groupby("custid")["gap"].skew()
+    # refund/discount 비율
+    out["mg_refund_disc"] = (d["net"] < 0).groupby(d["custid"]).sum() / ((d["dis_amt"].fillna(0) > 0).groupby(d["custid"]).sum() + 1)
+    # basket(custid+분): dominance, multi-corner, 가격분산
+    b = d.groupby(["custid", "dt"])
+    out["mg_basket_dom"] = b["net"].apply(lambda x: x.abs().max() / (x.abs().sum() + 1e-5)).groupby("custid").mean()
+    out["mg_basket_multicorner"] = (b["corner_nm"].nunique() >= 2).groupby("custid").mean()
+    out["mg_basket_size"] = b.size().groupby("custid").mean()
+    out["mg_basket_pricestd"] = b["net"].std().groupby("custid").mean()
+    # A2 연속거래 금액증감 / B9 sibling / F27 buyer niche / D20 food anchor / E22 drift cosine
+    d["pnet"] = g["net"].shift(); d["pdelta"] = (d["net"] - d["pnet"]) / (d["pnet"].abs() + 1e-5)
+    out["mg_seqprice_mean"] = g["pdelta"].mean(); out["mg_seqprice_std"] = g["pdelta"].std()
+    bday = d.groupby(["custid", "sales_date"])
+    out["mg_sibling"] = bday["g2"].nunique().lt(bday["g4"].nunique()).groupby("custid").mean()
+    out["mg_buyer_niche"] = d["buyer_nm"].map(d["buyer_nm"].value_counts()).groupby(d["custid"]).mean()
+    d["isfood"] = d["part_nm"].astype(str).str.contains("식품|생식|푸드", na=False).astype(float)
+    fday = d.groupby(["custid", "sales_date"])
+    out["mg_food_anchor"] = ((fday["isfood"].first() + fday["isfood"].last()) / 2).groupby("custid").mean()
+    d["h2"] = (g.cumcount() / g["goodcd"].transform("count")) >= 0.5
+    v1 = d[~d["h2"]].groupby(["custid", "g2"])["amt"].sum().unstack(fill_value=0)
+    v2 = d[d["h2"]].groupby(["custid", "g2"])["amt"].sum().unstack(fill_value=0)
+    cm = v1.index.intersection(v2.index)
+    a1 = v1.reindex(cm).values; a2 = v2.reindex(cm).values
+    cos = (a1 * a2).sum(1) / (np.linalg.norm(a1, axis=1) * np.linalg.norm(a2, axis=1) + 1e-9)
+    out["mg_drift_cos"] = pd.Series(1 - cos, index=cm).reindex(out.index).fillna(0)
+    # E24 seasonality alignment (월별 비율 vs 전체 평균과의 상관)
+    mp = d.groupby(["custid", d["sales_date"].dt.month])["amt"].sum().unstack(fill_value=0)
+    mpr = mp.div(mp.sum(1) + 1e-9, axis=0); gref = mpr.mean(0)
+    out["mg_season_align"] = mpr.apply(lambda r: np.corrcoef(r, gref)[0, 1], axis=1).reindex(out.index).fillna(0)
+    out.index.name = "custid"
+    return out.replace([np.inf, -np.inf], 0).fillna(0)
+
+
+def build_labelfe(full, y_df, m=20, n=5):
+    """두 AI label 기반(KFold leak-safe): basket 성별충돌 + 대리구매 + time-decayed TE + cat skew."""
+    d = full.copy(); d["sales_date"] = pd.to_datetime(d["sales_date"])
+    stt = d["sales_time"].fillna(0).astype(int)
+    d["dt"] = d["sales_date"] + pd.to_timedelta(stt // 100, "h") + pd.to_timedelta(stt % 100, "m")
+    d["amt"] = d["tot_amt"].fillna(0).clip(lower=0)
+    d["goodcd"] = d["goodcd"].astype(str).str.zfill(13); d["g6"] = d["goodcd"].str[:6]
+    ydict = dict(zip(y_df["custid"], y_df["gender"])); gm = float(y_df["gender"].mean())
+    base = y_df.reset_index(drop=True); kf = StratifiedKFold(n_splits=n, shuffle=True, random_state=42)
+    # part_nm gender TE (transaction) — OOF
+    col = "part_nm"; d[col] = d[col].fillna("UNKNOWN").astype(str)
+    dg = d[d["dataset"] == "train"].copy(); dg["gender"] = dg["custid"].map(ydict)
+    d["pte"] = np.nan
+    for tri, vai in kf.split(base, base["gender"]):
+        ti, vi = set(base.iloc[tri]["custid"]), set(base.iloc[vai]["custid"])
+        st = dg[dg["custid"].isin(ti)].groupby(col)["gender"].agg(["sum", "count"])
+        te = (st["sum"] + m * gm) / (st["count"] + m)
+        vm = (d["dataset"] == "train") & d["custid"].isin(vi); d.loc[vm, "pte"] = d.loc[vm, col].map(te).fillna(gm)
+    st = dg.groupby(col)["gender"].agg(["sum", "count"]); te = (st["sum"] + m * gm) / (st["count"] + m)
+    tm = d["dataset"] == "test"; d.loc[tm, "pte"] = d.loc[tm, col].map(te).fillna(gm)
+    d["pte"] = d["pte"].fillna(gm)
+    g = d.groupby("custid"); out = pd.DataFrame(index=g.size().index)
+    # D16 basket 성별충돌 (영수증내 pte max-min)
+    bk = d.groupby(["custid", "dt"])["pte"]
+    out["lb_basket_conflict"] = (bk.max() - bk.min()).groupby("custid").mean()
+    # 30 대리구매: 남성skew·여성skew 동시존재 = min(male_share, female_share)
+    male_sh = d[d["pte"] <= 0.4].groupby("custid")["amt"].sum() / (g["amt"].sum() + 1e-5)
+    fem_sh = d[d["pte"] >= 0.6].groupby("custid")["amt"].sum() / (g["amt"].sum() + 1e-5)
+    out["lb_proxy_buy"] = pd.concat([male_sh, fem_sh], axis=1).min(1).reindex(out.index).fillna(0)
+    # A5 time-decayed TE (최근 거래 가중)
+    ref = d["sales_date"].max(); d["dtw"] = np.exp(-(ref - d["sales_date"]).dt.days / 60.0)
+    d["ptew"] = d["pte"] * d["dtw"]
+    out["lb_tdecay_te"] = g["ptew"].sum() / (g["dtw"].sum() + 1e-5)
+    # A1 first-destination TE (일별 첫 거래 pte 평균)
+    fd = d.sort_values(["custid", "dt"]).groupby(["custid", "sales_date"])["pte"].first()
+    out["lb_firstdest_te"] = fd.groupby("custid").mean()
+    # g6 skew (label confidence)
+    sk = dg.groupby("g6")["gender"].mean(); d["g6skew"] = (d["g6"].map(sk) - gm).abs()
+    out["lb_g6_skew"] = g["g6skew"].mean()
+    out.index.name = "custid"
+    return out.replace([np.inf, -np.inf], 0).fillna(gm)
+
+
 def build_all():
     tr, te, y, full = _load()
     full["str_part_key"] = full["str_nm"].astype(str) + "_" + full["part_nm"].astype(str)
@@ -558,6 +727,15 @@ def build_all():
     if os.environ.get("KML_LASTFE") == "1":        # GPT막판: 금액 quantile + 거래간격 + 일단위 다양성
         allf = allf.join(build_lastfe(full), how="left")
         print("  +lastfe (amt quantile/gap/daily diversity)")
+    if os.environ.get("KML_GENINT") == "1":        # GPT1순위: gender score interaction(amt-weighted/weekend/recent)
+        allf = allf.join(build_genint(full, y), how="left")
+        print("  +genint (gender score interaction)")
+    if os.environ.get("KML_MEGA") == "1":          # 두AI공통: goodcd계층/transition/basket/상대가격/드리프트
+        allf = allf.join(build_mega(full), how="left")
+        print("  +mega (goodcd계층/transition/basket/relprice/drift)")
+    if os.environ.get("KML_LABELFE") == "1":       # 두AI label: basket성별충돌/대리구매/time-decayed TE
+        allf = allf.join(build_labelfe(full, y), how="left")
+        print("  +labelfe (basket conflict/proxy-buy/time-decay TE)")
     # NOTE: build_household — CV 하락(-0.0019) → 제외
     # NOTE: build_brandmeta + goodcd접두사TE — CV -0.00065(데이터TE에 흡수) → 제외
     # NOTE: build_giftkr(한국명절 어버이날/추석/설/빼빼로) — CV -0.00028(캘린더+카테고리TE에 흡수) → 제외
