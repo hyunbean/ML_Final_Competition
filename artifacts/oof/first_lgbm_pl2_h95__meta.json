@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.7164433175613065,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "1등FE + strict pseudo",
+  "created_by": "hyunbean",
+  "notes": "lgbm strict pseudo(격리teacher HI/LO=0.95/0.05), test-side 신호"
+}
