@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.698047362676865,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "representation-first (emb+svd+cooc + 최소 handcrafted)",
+  "created_by": "hyunbean",
+  "notes": "GPT 최종 승부수: 73독립 representation-first. corr(73)<0.97이면 직교신호"
+}
