@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.687257036525169,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "SCARF contrastive emb(transductive pretrain)",
+  "created_by": "hyunbean",
+  "notes": "SCARF self-supervised(train+test) → emb 분류기, teacher diversity용"
+}
