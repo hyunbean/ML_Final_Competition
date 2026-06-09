@@ -691,8 +691,16 @@ def build_labelfe(full, y_df, m=20, n=5):
     # A1 first-destination TE (일별 첫 거래 pte 평균)
     fd = d.sort_values(["custid", "dt"]).groupby(["custid", "sales_date"])["pte"].first()
     out["lb_firstdest_te"] = fd.groupby("custid").mean()
-    # g6 skew (label confidence)
-    sk = dg.groupby("g6")["gender"].mean(); d["g6skew"] = (d["g6"].map(sk) - gm).abs()
+    # g6 skew (label confidence) — KFold OOF (leak 방지)
+    d["g6skew"] = np.nan
+    for tri, vai in kf.split(base, base["gender"]):
+        ti, vi = set(base.iloc[tri]["custid"]), set(base.iloc[vai]["custid"])
+        sk = dg[dg["custid"].isin(ti)].groupby("g6")["gender"].mean()
+        vm = (d["dataset"] == "train") & d["custid"].isin(vi)
+        d.loc[vm, "g6skew"] = (d.loc[vm, "g6"].map(sk) - gm).abs()
+    sk = dg.groupby("g6")["gender"].mean()
+    tmk = d["dataset"] == "test"; d.loc[tmk, "g6skew"] = (d.loc[tmk, "g6"].map(sk) - gm).abs()
+    d["g6skew"] = d["g6skew"].fillna(0)
     out["lb_g6_skew"] = g["g6skew"].mean()
     out.index.name = "custid"
     return out.replace([np.inf, -np.inf], 0).fillna(gm)
