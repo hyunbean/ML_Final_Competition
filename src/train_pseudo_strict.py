@@ -24,12 +24,13 @@ _EMB = os.environ.get("KML_EMB", "0") == "1"
 _BEST = os.environ.get("PL_BEST", "0") == "1"   # #2: best 블렌드 구성요소만 강한 teacher(희석X) → _plb
 _TE = os.environ.get("KML_TESMOOTH", "0") == "1"   # 딥리서치#2: tesm 포함 526피처 student → _te
 _LF = os.environ.get("KML_LASTFE", "0") == "1"     # GPT막판: lastfe(quantile/gap/daily) 포함 → _lf
+_LB = os.environ.get("KML_LABELFE", "0") == "1"    # 두AI label: basket충돌/대리구매/tdecay → _lb
 PL_W = float(os.environ.get("PL_W", "1.0"))        # pseudo 샘플 가중치(<1.0=약하게 반영, 노이즈억제)
 TOPK = float(os.environ.get("PL_TOPK", "0"))       # 상/하위 K%만 pseudo(0=off, GPT#2: threshold보다 개수안정)
 _thr = "" if (abs(HI - 0.90) < 1e-9 and abs(LO - 0.10) < 1e-9) else f"_h{int(round(HI * 100))}"
 _wtag = "" if abs(PL_W - 1.0) < 1e-9 else f"_w{int(round(PL_W * 100))}"
 _tk = "" if TOPK <= 0 else f"_tk{int(round(TOPK * 100))}"
-SUF = ("_lf" if _LF else "") + ("_te" if _TE else "") + ("_ple" if _EMB else "") + ("_plb" if _BEST else ("_plc" if _CONS else ("_pl3" if ITER else "_pl2"))) + _thr + _wtag + _tk
+SUF = ("_lf" if _LF else "") + ("_lb" if _LB else "") + ("_te" if _TE else "") + ("_ple" if _EMB else "") + ("_plb" if _BEST else ("_plc" if _CONS else ("_pl3" if ITER else "_pl2"))) + _thr + _wtag + _tk
 _EXTRA = ["first_xgb_pl2", "first_lgbm_pl2"] if ITER else []
 if _BEST:   # 우리 best 블렌드(mh_bestblend69≈73 + pseudo)만 = 강하고 깨끗한 teacher (희석 제거)
     _BT = ["mh_bestblend69", "first_xgb_pl2", "first_lgbm_pl2", "mh_05_AutoGluon_megamax"]
