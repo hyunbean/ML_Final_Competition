@@ -100,7 +100,7 @@ def run(kind, X, Xt, y, folds, test_ids):
     Xp = Xt[conf.tolist()]
     print(f"[{kind}] teacher={avail} | {mode} pseudo {conf.sum()}/{len(mean)} (pos {pl_y.mean():.2f}) HI/LO={HI}/{LO} PL_W={PL_W}")
     oof = np.full(len(y), np.nan); test_sum = np.zeros(len(test_ids))
-    multi = "_ms" if len(SEEDS) > 1 else ""
+    multi = "_ms" if len(SEEDS) > 1 else (f"_s{SEEDS[0]}" if SEEDS[0] != C.SEED else "")
     if KFOLD > 0:                                  # #112식: 즉석 N-fold (variance↓)
         from sklearn.model_selection import StratifiedKFold
         splits = list(StratifiedKFold(KFOLD, shuffle=True, random_state=C.SEED).split(X, y)); nf = KFOLD
