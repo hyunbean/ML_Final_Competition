@@ -72,9 +72,10 @@ def _fit_fold(Xtr, ytr, Xva, yva, Xt, arch, dev):
     def _pred(M, X):
         M.eval()
         out = []
+        ib = 512 if kind == "ft" else 4096          # FT는 attention O(n_feat^2)라 inference도 작게(OOM방지)
         with torch.no_grad():
-            for i in range(0, len(X), 4096):
-                xb = X[i:i + 4096]
+            for i in range(0, len(X), ib):
+                xb = X[i:i + ib]
                 logit = M(xb, None) if kind == "ft" else M(xb)
                 out.append(torch.sigmoid(logit).float().cpu().numpy().ravel())
         return np.concatenate(out)
