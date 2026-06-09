@@ -48,6 +48,7 @@ GROUPS = {
     "pleXL":  ["first_xgb_ple_pl2", "first_lgbm_ple_pl2"],                            # pseudo+임베딩
     "msXL":   ["first_xgb_pl2_ms", "first_lgbm_pl2_ms"],                              # 멀티시드 pseudo
     "plbXL":  ["first_xgb_plb", "first_lgbm_plb"],                                    # 강한 teacher pseudo
+    "teXL":   ["first_xgb_te_pl2", "first_lgbm_te_pl2"],                              # tesm(goodcd계층TE) pseudo
 }
 
 # 제출명 → [(source, weight), ...].  source = 'EXT73' | GROUPS키 | 단일 멤버명
@@ -94,6 +95,10 @@ RECIPES = {
     # --- 마지막 레버(6/8): 멀티시드 / 강한 teacher pseudo ---
     "ms_pl2_XL_w30": [("EXT73", 0.70), ("msXL", 0.30)],
     "plb_XL_w30":    [("EXT73", 0.70), ("plbXL", 0.30)],
+    # --- 딥리서치#2: goodcd계층 베이지안 TE 포함 pseudo (직교 corr0.70) ---
+    "te_pl2_XL_w30": [("EXT73", 0.70), ("teXL", 0.30)],
+    "te_pl2_XL_w25": [("EXT73", 0.75), ("teXL", 0.25)],
+    "te_combo_w30":  [("EXT73", 0.70), ("plXL", 0.15), ("teXL", 0.15)],   # 기존pseudo+tesmpseudo 결합
 }
 
 
