@@ -10,6 +10,7 @@ verify-first: 먼저 OOF/test 만들고 AUC + 기존 pseudo와 corr 확인 → �
             FT_ARCH=mlp ... (FT-Transformer 미설치 시 자동 fallback)
 """
 import os
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")  # 단편화 완화
 import sys
 import numpy as np
 import pandas as pd
@@ -24,7 +25,9 @@ ARCH = os.environ.get("FT_ARCH", "ft")
 GPU = os.environ.get("FT_GPU", "1") == "1"
 EPOCHS = int(os.environ.get("FT_EPOCHS", "120"))
 PATIENCE = int(os.environ.get("FT_PATIENCE", "16"))
-BATCH = int(os.environ.get("FT_BATCH", "512"))
+BATCH = int(os.environ.get("FT_BATCH", "128"))   # 521피처 attention O(n^2) → batch 작게(OOM 방지)
+FT_BLOCKS = int(os.environ.get("FT_BLOCKS", "2"))
+FT_DBLOCK = int(os.environ.get("FT_DBLOCK", "128"))
 LR = float(os.environ.get("FT_LR", "1e-4"))
 WD = float(os.environ.get("FT_WD", "1e-5"))
 
@@ -35,7 +38,7 @@ def _make_model(d, arch):
         from rtdl_revisiting_models import FTTransformer
         return FTTransformer(
             n_cont_features=d, cat_cardinalities=[], d_out=1,
-            n_blocks=3, d_block=192, attention_n_heads=8,
+            n_blocks=FT_BLOCKS, d_block=FT_DBLOCK, attention_n_heads=8,
             attention_dropout=0.2, ffn_d_hidden_multiplier=4 / 3,
             ffn_dropout=0.1, residual_dropout=0.0,
         ), "ft"

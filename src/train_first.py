@@ -172,6 +172,44 @@ def _te_test(train_tx, test_tx, y_df, col):
     return t.groupby("custid")["te_value"].mean().to_frame(f"te_{col}_gender")
 
 
+def _bayes_te(tx_tr, tx_dst, gm, col, m):
+    """베이지안 smoothing: te=(합+m·전역)/(개수+m). hard-cutoff보다 부드럽게 shrink(Pargent2022)."""
+    st = tx_tr.groupby(col)["gender"].agg(["sum", "count"])
+    st["te"] = (st["sum"] + m * gm) / (st["count"] + m)
+    v = tx_dst.merge(st[["te"]], left_on=col, right_index=True, how="left")
+    v["te"] = v["te"].fillna(gm)
+    return v.groupby("custid")["te"].mean()
+
+
+def build_te_smooth(full, y_df, m=20, n=5):
+    """딥리서치#2: goodcd 계층(최고 카디널리티, TE 미적용) + 고카디널리티에 베이지안 smoothed CV-TE.
+    feature-space 레버라 model-space pseudo와 직교 가능. fold-safe(train custid 5-fold), test=full train."""
+    d = full.copy()
+    d["goodcd"] = d["goodcd"].astype(str)
+    junk = d["goodcd"].eq("2700000000000") | d["pc_nm"].astype(str).eq("미확인pc") | d["corner_nm"].astype(str).eq("용기보증")
+    d = d[~junk].copy()
+    d["gc6"] = d["goodcd"].str[:6]; d["gc9"] = d["goodcd"].str[:9]
+    use = [c for c in ["goodcd", "gc9", "gc6", "pc_nm", "buyer_nm"] if c in d.columns]
+    for c in use:
+        d[c] = d[c].astype(str).fillna("UNKNOWN")
+    trg = d[d["dataset"] == "train"].merge(y_df, on="custid")
+    te = d[d["dataset"] == "test"]
+    gm = float(trg["gender"].mean())
+    base = y_df[y_df["custid"].isin(trg["custid"].unique())].reset_index(drop=True)
+    kf = StratifiedKFold(n_splits=n, shuffle=True, random_state=42)
+    blocks = []
+    for col in use:
+        tr_s = pd.Series(np.nan, index=base["custid"].values, dtype=float)
+        for tri, vai in kf.split(base, base["gender"]):
+            ti, vi = set(base.iloc[tri]["custid"]), set(base.iloc[vai]["custid"])
+            cm = _bayes_te(trg[trg["custid"].isin(ti)], trg[trg["custid"].isin(vi)], gm, col, m)
+            tr_s.loc[cm.index] = cm.values
+        te_s = _bayes_te(trg, te, gm, col, m)
+        blocks.append(pd.concat([tr_s.fillna(gm), te_s]).to_frame(f"tesm_{col}_gender"))
+    out = pd.concat(blocks, axis=1); out.index.name = "custid"
+    return out
+
+
 # ---------- 8. RFM/기본 ----------
 def build_base(df):
     d = df.copy()
@@ -490,6 +528,9 @@ def build_all():
     if os.environ.get("KML_EMB") == "1":           # 교수힌트 #1 W2V + #3 FastText goodcd 임베딩
         allf = allf.join(build_emb(full), how="left")
         print("  +emb (W2V + FastText goodcd)")
+    if os.environ.get("KML_TESMOOTH") == "1":      # 딥리서치#2 베이지안 smoothed TE(goodcd계층+고카디널리티)
+        allf = allf.join(build_te_smooth(full, y), how="left")
+        print("  +te_smooth (goodcd/gc9/gc6/pc_nm/buyer_nm 베이지안 CV-TE)")
     # NOTE: build_household — CV 하락(-0.0019) → 제외
     # NOTE: build_brandmeta + goodcd접두사TE — CV -0.00065(데이터TE에 흡수) → 제외
     # NOTE: build_giftkr(한국명절 어버이날/추석/설/빼빼로) — CV -0.00028(캘린더+카테고리TE에 흡수) → 제외
