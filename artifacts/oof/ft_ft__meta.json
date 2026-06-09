@@ -1,0 +1,8 @@
+{
+  "cv_auc": 0.7109337374031574,
+  "seed": 42,
+  "n_folds": 5,
+  "feature_set": "1등FE 521 + quantile",
+  "created_by": "hyunbean",
+  "notes": "neural tabular teacher(ft), pseudo teacher diversity용"
+}
