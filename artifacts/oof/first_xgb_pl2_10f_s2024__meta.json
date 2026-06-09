@@ -1,5 +1,5 @@
 {
-  "cv_auc": 0.7110167695860627,
+  "cv_auc": 0.7199833761266343,
   "seed": 42,
   "n_folds": 10,
   "feature_set": "1등FE + strict pseudo",
