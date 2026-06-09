@@ -57,27 +57,39 @@ def _teacher(kind, test_ids):
 SEEDS = [int(s) for s in os.environ.get("PL_SEEDS", str(C.SEED)).split(",")]   # 멀티시드 평균(분산감소)
 
 
+NOSTOP = os.environ.get("PL_NOSTOP", "0") == "1"   # make_112 재현: early stopping 끄고 full 학습(#112 1위레시피)
+
+
 def _fit(kind, Xtr, ytr, Xva, yva, Xt, seed=None, sw=None):
     import xgboost as xgb, lightgbm as lgb
     from catboost import CatBoostClassifier
     sd = C.SEED if seed is None else seed
     if kind == "xgb":
-        m = xgb.XGBClassifier(n_estimators=4000, early_stopping_rounds=150, objective="binary:logistic",
-                              eval_metric="auc", learning_rate=0.02, max_depth=7, min_child_weight=5, gamma=0.1,
-                              subsample=0.8, colsample_bytree=0.7, reg_alpha=1.0, reg_lambda=5.0,
-                              random_state=sd, tree_method="hist", device="cuda" if GPU else "cpu")
-        m.fit(Xtr, ytr, sample_weight=sw, eval_set=[(Xva, yva)], verbose=False)
+        kw = dict(n_estimators=4000, objective="binary:logistic", eval_metric="auc", learning_rate=0.02,
+                  max_depth=7, min_child_weight=5, gamma=0.1, subsample=0.8, colsample_bytree=0.7,
+                  reg_alpha=1.0, reg_lambda=5.0, random_state=sd, tree_method="hist", device="cuda" if GPU else "cpu")
+        if not NOSTOP:
+            kw["early_stopping_rounds"] = 150
+        m = xgb.XGBClassifier(**kw)
+        m.fit(Xtr, ytr, sample_weight=sw, verbose=False) if NOSTOP else m.fit(Xtr, ytr, sample_weight=sw, eval_set=[(Xva, yva)], verbose=False)
     elif kind == "lgbm":
-        m = lgb.LGBMClassifier(n_estimators=4000, objective="binary", metric="auc", learning_rate=0.02,
+        ne = 2500 if NOSTOP else 4000     # make_112 lgbm=2500 full
+        m = lgb.LGBMClassifier(n_estimators=ne, objective="binary", metric="auc", learning_rate=0.02,
                                num_leaves=64, min_child_samples=40, subsample=0.8, subsample_freq=1,
                                colsample_bytree=0.7, reg_alpha=1.0, reg_lambda=5.0, n_jobs=-1,
                                random_state=sd, verbose=-1)
-        m.fit(Xtr, ytr, sample_weight=sw, eval_set=[(Xva, yva)], callbacks=[lgb.early_stopping(150, verbose=False)])
+        if NOSTOP:
+            m.fit(Xtr, ytr, sample_weight=sw)
+        else:
+            m.fit(Xtr, ytr, sample_weight=sw, eval_set=[(Xva, yva)], callbacks=[lgb.early_stopping(150, verbose=False)])
     else:
         m = CatBoostClassifier(iterations=2000, learning_rate=0.03, depth=7, l2_leaf_reg=5, eval_metric="AUC",
                                random_seed=sd, verbose=0, allow_writing_files=False,
                                task_type="GPU" if GPU else "CPU")
-        m.fit(Xtr, ytr, sample_weight=sw, eval_set=(Xva, yva), early_stopping_rounds=150)
+        if NOSTOP:
+            m.fit(Xtr, ytr, sample_weight=sw)
+        else:
+            m.fit(Xtr, ytr, sample_weight=sw, eval_set=(Xva, yva), early_stopping_rounds=150)
     return m.predict_proba(Xva)[:, 1], m.predict_proba(Xt)[:, 1]
 
 
