@@ -106,7 +106,7 @@ def run(kind, X, Xt, y, folds, test_ids):
         splits = list(StratifiedKFold(KFOLD, shuffle=True, random_state=C.SEED).split(X, y)); nf = KFOLD
     else:
         splits = [(np.where(folds != f)[0], np.where(folds == f)[0]) for f in range(C.N_FOLDS)]; nf = C.N_FOLDS
-    for tri, va in splits:
+    for f, (tri, va) in enumerate(splits):
         Xtr = pd.concat([X.iloc[tri], Xp], axis=0); ytr = np.concatenate([y[tri], pl_y])
         sw = np.r_[np.ones(len(tri)), np.full(len(pl_y), PL_W)] if abs(PL_W - 1.0) > 1e-9 else None
         vps = np.zeros(len(va)); tps = np.zeros(len(test_ids))
@@ -114,7 +114,7 @@ def run(kind, X, Xt, y, folds, test_ids):
             vp, tp = _fit(kind, Xtr, ytr, X.iloc[va], y[va], Xt, seed=sd, sw=sw)
             vps += vp / len(SEEDS); tps += tp / len(SEEDS)
         oof[va] = vps; test_sum += tps
-        print(f"  [fold {f}] AUC={roc_auc_score(y[va], vps):.5f}")
+        print(f"  [fold {f}] AUC={roc_auc_score(y[va], vps):.5f}", flush=True)
     cv = float(roc_auc_score(y, oof)); name = f"first_{kind}{SUF}{multi}"
     print(f"==== {name}  CV={cv:.5f} ====")
     save_predictions(name, oof, test_sum / nf, meta=dict(cv_auc=cv, seed=C.SEED, n_folds=nf,
