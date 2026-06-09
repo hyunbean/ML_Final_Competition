@@ -1,5 +1,5 @@
 {
-  "cv_auc": 0.687257036525169,
+  "cv_auc": 0.6869802013083093,
   "seed": 42,
   "n_folds": 5,
   "feature_set": "SCARF contrastive emb(transductive pretrain)",
