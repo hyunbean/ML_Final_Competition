@@ -503,6 +503,30 @@ def build_brandmeta(df):
     return R
 
 
+def build_lastfe(full):
+    """GPT 막판: 521에 없는 고확률 aggregate — 금액 quantile + 거래간격 + 일단위 다양성."""
+    d = full.copy(); d["sales_date"] = pd.to_datetime(d["sales_date"])
+    g = d.groupby("custid")["tot_amt"]
+    q = g.quantile([.25, .5, .75, .9, .95]).unstack()
+    q.columns = [f"lf_amt_q{int(c*100)}" for c in q.columns]
+    q["lf_amt_iqr"] = q["lf_amt_q75"] - q["lf_amt_q25"]
+    q["lf_amt_p90_p50"] = q["lf_amt_q90"] / (q["lf_amt_q50"].abs() + 1e-5)
+    st = g.agg(["mean", "std"]); q["lf_amt_cv"] = st["std"] / (st["mean"].abs() + 1e-5)
+    # 거래간격(방문일 기준)
+    dd = d[["custid", "sales_date"]].drop_duplicates().sort_values(["custid", "sales_date"])
+    dd["gap"] = dd.groupby("custid")["sales_date"].diff().dt.days
+    gp = dd.groupby("custid")["gap"].agg(["mean", "median", "std", "max"]).add_prefix("lf_gap_")
+    dd["le7"] = (dd["gap"] <= 7).astype(float); dd["ge30"] = (dd["gap"] >= 30).astype(float)
+    rv = dd.groupby("custid")[["le7", "ge30"]].mean().rename(columns={"le7": "lf_revisit7", "ge30": "lf_gap30"})
+    # 일 단위 다양성
+    dl = d.groupby(["custid", "sales_date"]).agg(dc_brd=("brd_nm", "nunique"), dc_cor=("corner_nm", "nunique"),
+                                                 dc_cnt=("tot_amt", "size"), dc_amt=("tot_amt", "sum"))
+    dv = dl.groupby("custid").agg(["mean", "std", "max"])
+    dv.columns = [f"lf_daily_{a}_{b}" for a, b in dv.columns]
+    out = pd.concat([q, gp, rv, dv], axis=1); out.index.name = "custid"
+    return out.fillna(0)
+
+
 def build_all():
     tr, te, y, full = _load()
     full["str_part_key"] = full["str_nm"].astype(str) + "_" + full["part_nm"].astype(str)
@@ -531,6 +555,9 @@ def build_all():
     if os.environ.get("KML_TESMOOTH") == "1":      # 딥리서치#2 베이지안 smoothed TE(goodcd계층+고카디널리티)
         allf = allf.join(build_te_smooth(full, y), how="left")
         print("  +te_smooth (goodcd/gc9/gc6/pc_nm/buyer_nm 베이지안 CV-TE)")
+    if os.environ.get("KML_LASTFE") == "1":        # GPT막판: 금액 quantile + 거래간격 + 일단위 다양성
+        allf = allf.join(build_lastfe(full), how="left")
+        print("  +lastfe (amt quantile/gap/daily diversity)")
     # NOTE: build_household — CV 하락(-0.0019) → 제외
     # NOTE: build_brandmeta + goodcd접두사TE — CV -0.00065(데이터TE에 흡수) → 제외
     # NOTE: build_giftkr(한국명절 어버이날/추석/설/빼빼로) — CV -0.00028(캘린더+카테고리TE에 흡수) → 제외
