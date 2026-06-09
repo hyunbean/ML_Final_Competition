@@ -641,6 +641,8 @@ def build_mega(full):
     d["h2"] = (g.cumcount() / g["goodcd"].transform("count")) >= 0.5
     v1 = d[~d["h2"]].groupby(["custid", "g2"])["amt"].sum().unstack(fill_value=0)
     v2 = d[d["h2"]].groupby(["custid", "g2"])["amt"].sum().unstack(fill_value=0)
+    allc = v1.columns.union(v2.columns)
+    v1 = v1.reindex(columns=allc, fill_value=0); v2 = v2.reindex(columns=allc, fill_value=0)
     cm = v1.index.intersection(v2.index)
     a1 = v1.reindex(cm).values; a2 = v2.reindex(cm).values
     cos = (a1 * a2).sum(1) / (np.linalg.norm(a1, axis=1) * np.linalg.norm(a2, axis=1) + 1e-9)
