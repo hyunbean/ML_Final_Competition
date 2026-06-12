@@ -10,19 +10,20 @@
 | 박진성(우승) | 0.7378695 | 0.7345426 | 1위 |
 
 - Public 1위였으나 private에서 −0.00212로 역전패 = **public-overfit**.
-- 패인·교훈 전체 분석은 **[`KML2026S_회고_1위.md`](KML2026S_회고_1위.md) 섹션 17~19** 참조 (이 repo에서 가장 중요한 문서).
+- 패인·교훈 전체 분석은 **[`최종발표+분석/KML2026S_회고_1위.md`](최종발표+분석/KML2026S_회고_1위.md) 섹션 17~19** 참조 (이 repo에서 가장 중요한 문서).
 
 ## 📁 구조
 ```
-KML2026S_회고_1위.md   ★ 회고 (협업·돌파·검증·앙상블구조·shake-up분석·다음대회청사진)
-실험노트_템플릿.md      일일 실험노트 템플릿
-PIPELINE.md            파이프라인 개요
+최종발표+분석/         ★ 회고·발표·분석
+  ├ KML2026S_회고_1위.md   회고 (협업·돌파·검증·앙상블구조·shake-up분석·다음대회청사진)
+  ├ 실험노트_템플릿.md     일일 실험노트 템플릿
+  ├ 2등팀_KML성별예측_발표.html   우리 팀 발표자료
+  └ kaggle_1st_place_solution.html  작년 1등 참고자료
+setup/                 환경·실행 설정 (COLAB_SETUP·DLPC_SETUP·PIPELINE·README_TEAM·starter_code)
 src/                   핵심 코드 (아래 참조)
 experiments_archive/   실패/폐기 실험 코드 (회고 근거용 보관, 재현 비대상)
 artifacts/oof/         팀 공유 base 멤버 OOF+test 예측 (스태킹 입력)
 artifacts/             train/test custids, folds (고정 seed)
-hyunbin_npy/           신현빈 생성 base 멤버 예측
-mega피처_김민형/       김민형 mega-FE 자산
 ```
 
 ## 🔑 핵심 파이프라인 (src/)
@@ -41,7 +42,7 @@ mega피처_김민형/       김민형 mega-FE 자산
 - 데이터(`*.csv`)는 git 제외 — 각 머신에 배치 후 `KML_DATA` 경로 지정.
 - 모든 예측은 **rank 정규화 + 고정 folds + custid 정렬 통일** (스태킹 누수 방지).
 - pseudo OOF는 즉석 K-fold라 5-fold 메타스택 입력 금지 (단독/단순 rank-avg만).
-- 환경 설정: `COLAB_SETUP.md` / `DLPC_SETUP.md` 참조.
+- 환경 설정: `setup/COLAB_SETUP.md` / `setup/DLPC_SETUP.md` 참조.
 
 ## 💡 다음 대회 핵심 교훈 (회고 섹션 19 — 범용 원칙)
 1. **CV−LB Gap 모니터링** — 일정=robust, 벌어지면 과적합. CV 최고 ≠ 채택.
