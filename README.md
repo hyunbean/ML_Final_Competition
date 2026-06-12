@@ -17,7 +17,7 @@
 최종발표+분석/         ★ 회고·발표·분석
   ├ KML2026S_회고_1위.md   회고 (협업·돌파·검증·앙상블구조·shake-up분석·다음대회청사진)
   ├ 실험노트_템플릿.md     일일 실험노트 템플릿
-  ├ 2등팀_KML성별예측_발표.html   우리 팀 발표자료
+  ├ 2등(우리팀)_KML성별예측_발표.html   우리 팀 발표자료
   └ kaggle_1st_place_solution.html  작년 1등 참고자료
 setup/                 환경·실행 설정 (COLAB_SETUP·DLPC_SETUP·PIPELINE·README_TEAM·starter_code)
 src/                   핵심 코드 (아래 참조)
