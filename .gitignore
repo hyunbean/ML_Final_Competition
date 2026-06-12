@@ -32,3 +32,12 @@ __pycache__/
 
 # AutoGluon 모델 저장(대용량)
 artifacts/ag_fold*/
+
+# 전송용 압축본(전달 후 불필요)
+*.zip
+
+# 김민형 공유 작업폴더(중복 npy 300+) / 타팀·교수 자료(저작권)
+김민형_0610/
+kml2026s_leaderboard analysis.html
+1등팀_*.html
+3등팀_*.pdf

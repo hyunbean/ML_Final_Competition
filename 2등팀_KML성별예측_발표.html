@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="ko"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KML 2026S — 고객 성별 예측 (2등 솔루션)</title>
+<style>
+:root{
+  --ink:#15151b; --paper:#ffffff; --paper2:#f5f6f9; --line:#e4e4ea;
+  --muted:#83838d; --hl:#ffe27a; --red:#e5392f;
+  --teal:#0fb5ba; --teal2:#0a8488; --navy:#1d2b4d; --gold:#caa24a;
+  --shadow:0 16px 38px -16px rgba(0,0,0,.26);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;background:#0c0c10;overflow:hidden;
+  font-family:-apple-system,"Apple SD Gothic Neo","Pretendard","Malgun Gothic",sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+#progress{position:fixed;top:0;left:0;height:3px;background:var(--teal);z-index:50;transition:width .35s}
+#viewport{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+#deck{width:1280px;height:720px;position:relative;transform-origin:center center}
+.slide{position:absolute;inset:0;background:var(--paper);opacity:0;visibility:hidden;transition:opacity .5s ease;overflow:hidden}
+.slide.active{opacity:1;visibility:visible}
+.tag{position:absolute;top:34px;left:58px;font-size:12px;font-weight:800;letter-spacing:.12em;color:var(--teal2)}
+.tag span{color:var(--muted);font-weight:600}
+.stitle{position:absolute;top:66px;left:58px;right:58px;font-size:36px;font-weight:800;line-height:1.16;letter-spacing:-.01em}
+.subtitle{position:absolute;top:130px;left:58px;right:58px;font-size:17px;font-weight:600;color:var(--muted)}
+.subtitle b{color:var(--teal2)}
+.body{position:absolute;left:58px;right:58px;top:182px;bottom:54px;display:flex;flex-direction:column;justify-content:center}
+.cs.foot .body{bottom:94px}
+.cs.top .body{justify-content:flex-start;padding-top:6px}
+.footbar{position:absolute;left:0;right:0;bottom:0;height:58px;background:var(--navy);color:#fff;
+  text-align:center;line-height:58px;padding:0 40px;font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden}
+.footbar b{color:#ffe27a}.footbar .tl{color:#7fe9ec}
+.hl{background:linear-gradient(transparent 58%,var(--hl) 58%);padding:0 2px;font-weight:800}
+.teal{color:var(--teal2);font-weight:800}.red{color:var(--red);font-weight:800}
+.fx{opacity:0}
+.slide.active .fx{animation:fxin .5s cubic-bezier(.2,.7,.2,1) both;animation-delay:var(--d,0s)}
+@keyframes fxin{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+.center{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.cover{background:linear-gradient(150deg,#11131c 0%, #1d2b4d 58%, #0a8488 128%);color:#fff}
+.cover h1{font-size:60px;font-weight:800;letter-spacing:-.02em;line-height:1.1}
+.cover h1 .ac{color:#3fe0e4}
+.cover .sub{font-size:19px;color:#c9d2e0;margin-top:18px;font-weight:500}
+.cover .meta{margin-top:40px;display:flex;gap:46px;font-size:13px;color:#9aa6bd}
+.cover .meta .l{font-size:11px;letter-spacing:.14em;color:#6b7791;margin-bottom:5px}
+.cover .meta .v{color:#dce3ef;font-weight:600;font-size:14px}
+.cover .score{position:absolute;top:54px;right:74px;text-align:right}
+.cover .score .n{font-size:46px;font-weight:800;color:#3fe0e4;line-height:1}
+.cover .score .l{font-size:11px;color:#8b97ad;letter-spacing:.12em;margin-top:5px}
+.closing{background:linear-gradient(150deg,#11131c,#1d2b4d 60%,#0a8488 130%);color:#fff}
+.closing h2{font-size:46px;font-weight:800;line-height:1.12;letter-spacing:-.01em}
+.closing h2 .ac{color:#3fe0e4}
+.closing .sub{font-size:17px;color:#c2cbdb;margin-top:20px}
+.closing .qa{margin-top:30px;font-size:13.5px;color:#8b97ad;border:1px solid #2c3550;padding:10px 26px;border-radius:30px}
+.cards{display:flex;gap:16px}
+.card{flex:1;background:var(--paper2);border:1px solid var(--line);border-radius:13px;padding:20px 18px}
+.card h3{font-size:16.5px;font-weight:800;margin-bottom:7px}
+.card p{font-size:13.5px;color:#555;line-height:1.5}
+.card .big{font-size:27px;font-weight:800;color:var(--teal2);margin-bottom:3px}
+.intro{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.intro .ic{background:var(--paper2);border-left:4px solid var(--teal);border-radius:8px;padding:16px 20px}
+.intro .ic .l{font-size:11px;font-weight:800;letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
+.intro .ic .v{font-size:23px;font-weight:800;margin:2px 0}
+.intro .ic .d{font-size:13px;color:var(--muted);line-height:1.45}
+.axis{display:flex;gap:14px}
+.axcol{flex:1;border-radius:13px;overflow:hidden;border:1px solid var(--line)}
+.axcol .h{padding:13px 16px;color:#fff;font-weight:800;font-size:17px;display:flex;align-items:center;gap:8px}
+.axcol .c{padding:13px 16px;background:var(--paper2);font-size:12.5px;color:#555;line-height:1.6}
+.axcol .c b{color:var(--ink)}
+.chip{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:11px;margin:2px 3px 0 0;border:1px solid}
+.chip.ok{background:#eafaf6;border-color:#7fd8c0;color:#0a6e52}
+.chip.star{background:var(--teal);border-color:var(--teal);color:#fff}
+table.t{width:100%;border-collapse:collapse;font-size:14.5px}
+table.t th{background:var(--navy);color:#fff;padding:9px 12px;text-align:left;font-weight:700;font-size:13px}
+table.t td{padding:8px 12px;border-bottom:1px solid var(--line)}
+table.t tr.win td{background:#e7fbfb;font-weight:800}
+table.t tr.gold td{background:#fff6e0}
+.t-num{font-variant-numeric:tabular-nums}
+.lessons{display:flex;flex-direction:column;gap:24px}
+.lesson{display:flex;gap:18px;align-items:flex-start}
+.lesson .ln{width:46px;height:46px;border-radius:50%;background:var(--teal);color:#fff;font-size:19px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.lesson.x .ln{background:var(--red)}
+.lesson .lt{font-size:19px;font-weight:800;color:#15151b;margin-bottom:4px}
+.lesson .ld{font-size:15px;color:#555;line-height:1.5}
+.lesson .ld b{color:#15151b}
+ul.b{list-style:none}ul.b li{font-size:15.5px;line-height:1.7;padding-left:22px;position:relative;margin-bottom:2px}
+ul.b li::before{content:"";position:absolute;left:2px;top:10px;width:7px;height:7px;border-radius:2px;background:var(--teal)}
+ul.b li.x::before{background:var(--red)}
+.insight{background:#fff8db;border-left:4px solid var(--gold);border-radius:0 8px 8px 0;padding:11px 14px;font-size:13px;line-height:1.55;color:#5c4a00}
+.insight b{color:#15151b}.insight .ti{font-weight:800;color:#15151b;margin-right:4px}
+.note{font-size:12.5px;color:var(--muted);margin-top:10px}
+.sigsec{margin-top:14px}
+.sigt{font-size:12.5px;font-weight:800;color:var(--teal2);margin-bottom:6px;letter-spacing:.02em}
+.sigrow{font-size:13px;color:#454953;line-height:1.5;padding:5px 0;border-top:1px solid #eef0f3;display:flex;gap:8px}
+.sigrow .si{flex-shrink:0}.sigrow b{color:#15151b}
+.lineage{display:flex;align-items:stretch;gap:0;margin:2px 0 4px}
+.lineage .ln{flex:1;border-radius:10px;padding:11px 10px;text-align:center;border:1.5px solid var(--line);background:var(--paper2)}
+.lineage .ln.prof{border-style:dashed;border-color:#b9bcc6;background:#f7f7f9}
+.lineage .ln.ours{border-color:var(--teal);background:linear-gradient(180deg,#fff,#effbfb)}
+.lineage .ln .l{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.lineage .ln.prof .l{color:#9298a4}.lineage .ln.ours .l{color:var(--teal2)}
+.lineage .ln .v{font-size:14.5px;font-weight:800;margin-top:3px;line-height:1.3}
+.lineage .ln .d{font-size:10.5px;color:#888;margin-top:2px}
+.lineage .ar{display:flex;align-items:center;font-size:20px;color:#c0c3cc;padding:0 5px}
+.bars{display:flex;flex-direction:column;gap:9px;margin-top:2px}
+.bar{display:flex;align-items:center;gap:12px}
+.bar .nm{width:222px;font-size:13.5px;font-weight:700;text-align:right;color:#3a3f49;line-height:1.25}
+.bar .nm .bd{font-size:10.5px;color:#9aa0ab;font-weight:500;line-height:1.25;margin-top:2px}
+.bar .tk{flex:1;height:22px;background:#eceef2;border-radius:6px;overflow:hidden}
+.bar .fl{height:100%;border-radius:6px;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;color:#fff;font-size:11.5px;font-weight:800}
+.bar.best .nm{color:var(--teal2);font-weight:800}
+.membars{display:flex;flex-direction:column;gap:8px}
+.mb{display:flex;align-items:center;gap:11px;padding:1px 0}
+.mb .mn{width:138px;font-size:12.5px;font-weight:600;text-align:right;color:#555;flex-shrink:0;font-variant-numeric:tabular-nums}
+.mb .mt{flex:1;height:21px;background:#eceef2;border-radius:5px;overflow:visible;position:relative}
+.mb .mf{display:block;height:100%;width:0;border-radius:5px;transition:width .8s cubic-bezier(.3,.85,.3,1);background:#9aa3b2}
+.mb .mv{width:100px;font-size:12.5px;font-weight:800;font-variant-numeric:tabular-nums;color:#15151b;flex-shrink:0}
+.mb .mv .moof{font-size:10.5px;font-weight:600;color:#9aa0ab}
+.mb.key .mn{color:var(--teal2);font-weight:800}
+.mb.key .mf{background:linear-gradient(90deg,#0fb5ba,#0a8488)}
+.mb.key.lit .mf{box-shadow:0 0 0 2px rgba(15,181,186,.45);animation:keypulse 1.5s ease-in-out infinite}
+@keyframes keypulse{0%,100%{filter:brightness(1)}50%{filter:brightness(1.2)}}
+.keybox{background:#fff8db;border:1.5px solid var(--gold);border-radius:13px;padding:16px 17px;opacity:0;transform:translateX(14px);transition:opacity .55s ease,transform .55s cubic-bezier(.3,.85,.3,1)}
+.keybox.show{opacity:1;transform:none}
+.keybox .kbh{font-size:15px;font-weight:800;color:#15151b;margin-bottom:10px}
+.keybox .kbi{font-size:12.5px;color:#5c4a00;line-height:1.5;margin-bottom:9px}
+.keybox .kbi b{color:#15151b}
+.keybox .kbn{font-size:12px;color:#7a6420;line-height:1.5;border-top:1px solid #ecd9a0;padding-top:9px;margin-top:2px}
+.fesetbox{background:#f0fcfc;border:1.5px solid var(--teal);border-radius:13px;padding:15px 17px;opacity:0;transform:translateX(14px);transition:opacity .55s ease,transform .55s cubic-bezier(.3,.85,.3,1)}
+.fesetbox.show{opacity:1;transform:none}
+.fesetbox .fbh{font-size:14.5px;font-weight:800;color:var(--teal2);margin-bottom:11px}
+.fesetbox .fbi{font-size:12.5px;color:#3a3f49;line-height:1.45;margin-bottom:8px}
+.fesetbox .fbi b{color:#15151b}
+.fesetbox .fbm{color:#8a909c;font-size:11px}
+.fesetbox .fbn{font-size:11.5px;color:#4a6a66;line-height:1.5;border-top:1px solid #c2e6e6;padding-top:9px;margin-top:3px}
+.pmbox{background:#fff5f5;border:1.5px solid #f0c8c8;border-radius:13px;padding:15px 17px}
+.pmbox .pmi{font-size:12.5px;color:#454953;line-height:1.5;margin-bottom:11px;padding-left:15px;position:relative}
+.pmbox .pmi::before{content:"";position:absolute;left:0;top:7px;width:7px;height:7px;border-radius:2px;background:var(--red)}
+.pmbox .pmi b{color:#15151b}
+.pmbox .pmn{font-size:12px;color:#b2342f;font-weight:700;border-top:1px solid #f0d8d8;padding-top:10px;margin-top:2px;line-height:1.5}
+.chart-box{background:#fff;border:1px solid var(--line);border-radius:12px;padding:8px}
+.chart-box svg{display:block;width:100%;height:auto}
+.legend{display:flex;flex-direction:column;gap:5px}
+.legend .r{display:flex;align-items:center;gap:8px;font-size:12.5px;color:#444}
+.legend .d{width:11px;height:11px;border-radius:50%}
+.flow{display:flex;align-items:stretch;gap:0}
+.flow .b2{flex:1;background:var(--paper2);border:1.5px solid var(--line);border-radius:10px;padding:14px 12px;text-align:center}
+.flow .b2.m{border-color:var(--teal);background:linear-gradient(180deg,#fff,#effbfb)}
+.flow .b2.o{background:var(--navy);color:#fff;border-color:var(--navy)}
+.flow .b2 .l{font-size:10px;font-weight:800;letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
+.flow .b2.o .l{color:#9fb0cc}
+.flow .b2 .v{font-size:14px;font-weight:800;margin-top:4px;line-height:1.35}
+.flow .ar{display:flex;align-items:center;font-size:22px;color:#b9bcc6;padding:0 4px}
+table.colhead{width:100%;border-collapse:separate;border-spacing:2px;table-layout:auto}
+table.colhead th{font-family:"SF Mono","Menlo",monospace;font-size:10px;font-weight:700;color:#2a2e38;background:#dcdee2;
+  padding:8px 3px 7px;border:1px solid #c4c6cc;border-top-width:3px;border-radius:4px;white-space:nowrap;text-align:center;letter-spacing:-.3px;
+  transition:transform .5s cubic-bezier(.45,0,.15,1), opacity .3s ease}
+.colhead th.docked{box-shadow:0 2px 8px rgba(0,0,0,.16);z-index:6;position:relative;border-top-width:3px}
+.ch-id{border-top-color:#b8b8bf!important}.ch-time{border-top-color:#6b7280!important}
+.ch-place{border-top-color:#1d2b4d!important}.ch-prod{border-top-color:#0a8488!important}.ch-price{border-top-color:#8a6d1f!important}
+.colcap{display:flex;gap:16px;justify-content:center;margin-top:8px;font-size:11px;color:#888}
+.colcap span{display:flex;align-items:center;gap:5px}.colcap i{width:13px;height:3px;border-radius:2px;display:inline-block}
+/* 슬라이드3 애니메이션: 박스/외부는 처음 숨김 → 컬럼이 dock으로 날아와 칩으로 남음 */
+[data-meta^="03 "] .ax4 .a{opacity:0;transition:opacity .35s ease}
+.ax4 .a .dock{height:27px;background:#eef1f5;border-bottom:1px solid var(--line)}
+[data-meta^="03 "] .extstrip{opacity:0;transition:opacity .4s ease}
+[data-meta^="03 "] .colhint{text-align:center;font-size:12px;color:var(--teal2);font-weight:700;margin-top:8px;transition:opacity .4s}
+.ax4{display:grid;grid-template-columns:repeat(4,1fr);gap:11px}
+.ax4 .a{border-radius:9px;border:1px solid var(--line);overflow:hidden;display:flex;flex-direction:column}
+.ax4 .a .h{padding:7px 12px;color:#fff;font-weight:800;font-size:14.5px;display:flex;align-items:center;gap:6px}
+.ax4 .a .src{padding:6px 12px 0;font-family:"SF Mono","Menlo",monospace;font-size:9.7px;color:#8a90; color:#8a909c;line-height:1.45}
+.ax4 .a .c{padding:6px 12px 10px;font-size:11.5px;color:#555;line-height:1.55;flex:1}
+.ax4 .a .c b{color:#1f2430}
+.extstrip{display:flex;align-items:center;gap:14px;background:linear-gradient(90deg,#f3effc,#fbf6ff);border:1.5px solid #d3bff0;border-radius:10px;padding:10px 16px}
+.extstrip .ico{font-size:22px;flex-shrink:0}
+.extstrip .tt{font-weight:800;font-size:13.5px;color:#6b3fa0;white-space:nowrap;flex-shrink:0}
+.extstrip .dd{font-size:12.5px;color:#555;line-height:1.5}
+.extstrip .dd b{color:#15151b}
+.rawhead{display:flex;align-items:center;gap:10px;font-size:13.5px;color:#555;margin-bottom:14px;flex-wrap:wrap}
+.rawhead .pill{background:#15151b;color:#fff;font-size:12px;font-weight:800;padding:4px 11px;border-radius:13px}
+.rawhead b{color:var(--ink)}
+.dgrid{display:grid;grid-template-columns:1fr 1.15fr 1fr;gap:14px}
+.dcol{border-radius:11px;border:1.5px solid;overflow:hidden}
+.dcol .dh{padding:9px 14px;font-weight:800;font-size:15px;color:#fff;display:flex;align-items:center;gap:7px}
+.dcol .dh small{font-weight:600;opacity:.82;font-size:12px}
+.dcol .db{padding:9px 14px 11px;background:#fff}
+.dcell{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:5px 0;border-bottom:1px dashed #eef0f3}
+.dcell:last-child{border-bottom:none}
+.dcell .ck{color:#9aa0ab;font-family:"SF Mono","Menlo",monospace;font-size:11px}
+.dcell .cv{font-weight:700;color:#1f2430;font-size:13.5px;text-align:right}
+.failgroups{display:grid;grid-template-columns:repeat(3,1fr);gap:15px}
+.fgrp{border:1.5px solid #f0c8c8;border-radius:12px;overflow:hidden;background:#fff8f8}
+.fgrp .fgh{background:#f7dede;padding:11px 14px;font-size:14.5px;font-weight:800;color:#b2342f;line-height:1.3}
+.fgrp .fgh small{display:block;font-size:10.5px;font-weight:600;color:#bd7a7a;margin-top:2px}
+.fgrp .fgi{padding:9px 14px;font-size:11.3px;color:#555;line-height:1.45;border-top:1px solid #f2dede}
+.fgrp .fgi b{color:#b2342f}
+.kslider{background:var(--paper2);border:1px solid var(--line);border-radius:12px;padding:14px 18px}
+.kread{font-size:15px;font-weight:800;text-align:center;margin-bottom:5px}
+.kread span{color:var(--teal2);font-variant-numeric:tabular-nums}
+.kread .ar{color:var(--muted);margin:0 6px}
+#kRange{width:100%;accent-color:var(--teal);height:18px;cursor:pointer;margin:6px 0 2px}
+.klab{display:flex;justify-content:space-between;font-size:10px;color:#999;font-weight:600}
+.knote{text-align:center;font-size:12px;font-weight:800;margin-top:6px}
+#bar{position:fixed;bottom:15px;left:50%;transform:translateX(-50%);display:flex;gap:6px;align-items:center;
+  background:rgba(20,20,28,.84);padding:7px 13px;border-radius:30px;z-index:40;backdrop-filter:blur(8px);transition:opacity .4s}
+#bar button{background:none;border:none;color:#cfcfd6;font-size:15px;cursor:pointer;padding:3px 8px;border-radius:7px}
+#bar button:hover{background:rgba(255,255,255,.13);color:#fff}
+#bar .ct{color:#9a9aa3;font-size:12px;font-weight:700;min-width:44px;text-align:center;font-variant-numeric:tabular-nums}
+body.idle #bar{opacity:0}
+#overview{position:fixed;inset:0;background:rgba(14,14,20,.96);z-index:60;display:none;padding:42px}
+#overview.show{display:block}
+#overview h3{color:#fff;text-align:center;font-size:18px;margin-bottom:22px}
+#grid{max-width:980px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:13px}
+.ovt{background:#222733;border-radius:9px;padding:14px;cursor:pointer;color:#ccc}
+.ovt:hover{background:#2d3340}
+.ovt .n{font-size:11px;color:#3fe0e4;font-weight:800;letter-spacing:.08em}
+.ovt .t{font-size:12.5px;color:#fff;font-weight:600;margin-top:5px;line-height:1.35}
+</style>
+</head><body>
+<div id="progress"></div>
+<div id="viewport"><div id="deck">
+
+<!-- 1 표지 -->
+<section class="slide center cover active" data-meta="01 / 표지">
+  <div class="score"><div class="n">0.7324</div><div class="l">PRIVATE · 2ND</div></div>
+  <div class="fx" style="font-size:13px;letter-spacing:.18em;color:#7fe9ec;font-weight:700">KML CHALLENGE 2026S · 고객 성별 예측</div>
+  <h1 class="fx" style="margin-top:18px">거래 로그로 <span class="ac">성별</span>을 맞히다<br>— 스택 앙상블 <span class="ac">2등</span> 솔루션</h1>
+  <div class="sub fx">Feature Engineering · AutoGluon · Pseudo-labeling · K-fold</div>
+  <div class="meta fx">
+    <div><div class="l">TEAM</div><div class="v">김민형·신현빈·조아인·이두영</div></div>
+    <div><div class="l">METRIC</div><div class="v">ROC-AUC</div></div>
+    <div><div class="l">RESULT</div><div class="v">Public 1위 → Private 2위</div></div>
+  </div>
+</section>
+
+<!-- 2 대회 소개 -->
+<section class="slide cs foot" data-meta="02 / 대회 소개">
+  <div class="tag">02 <span>대회 소개</span></div>
+  <div class="stitle fx">원본 거래 로그 → 고객 성별 이진분류</div>
+  <div class="subtitle fx">익명화된 transaction 만으로 <b>성별</b>을 예측 · 평가 = <b>ROC-AUC</b></div>
+  <div class="body">
+    <div class="intro">
+      <div class="ic fx"><div class="l">Task</div><div class="v">성별 이진분류</div><div class="d">고객별 거래내역(상품·브랜드·금액·시간)을 집계해 gender 확률 예측</div></div>
+      <div class="ic fx"><div class="l">Metric</div><div class="v">ROC-AUC</div><div class="d">순위 기반 — 단조변환에 불변. 순위가 전부, 캘리브레이션 무의미</div></div>
+      <div class="ic fx"><div class="l">Data</div><div class="v">30,000 / 19,995</div><div class="d">train 30,000명 · test 19,995명 · 양성률 0.304</div></div>
+      <div class="ic fx"><div class="l">난이도</div><div class="v">0.61 → 0.72</div><div class="d">원본 그대로면 0.61(랜덤+α), <b style="color:var(--teal2)">FE로 0.72</b> — 피처 엔지니어링이 핵심</div></div>
+    </div>
+  </div>
+  <div class="footbar fx">핵심 질문 — "더 많은 피처"가 아니라 <b>거래를 어떻게 사람의 특성으로 요약하느냐</b></div>
+</section>
+
+<!-- 3 원본 데이터 → 4축 + 외부 -->
+<section class="slide cs foot top" data-meta="03 / 원본 데이터 → 피처">
+  <div class="tag">03 <span>피처 엔지니어링 — 4축 + 외부</span></div>
+  <div class="stitle fx">원본 16개 컬럼을 <span class="teal">시간·장소·상품·가격</span> 축으로 대량 생성</div>
+  <div class="subtitle fx">회색 헤더 = 거래 1건의 16개 컬럼. 각 컬럼을 4축으로 묶어 <b>수백 개 피처</b> 생성</div>
+  <div class="body">
+    <table class="colhead fx"><tr>
+      <th class="ch-id">custid</th><th class="ch-time">sales_datetime</th>
+      <th class="ch-place">str_nm</th><th class="ch-prod">goodcd</th><th class="ch-prod">brd_nm</th>
+      <th class="ch-place">corner_nm</th><th class="ch-place">pc_nm</th><th class="ch-prod">part_nm</th>
+      <th class="ch-place">team_nm</th><th class="ch-prod">buyer_nm</th><th class="ch-prod">import_flg</th>
+      <th class="ch-price">tot_amt</th><th class="ch-price">dis_amt</th><th class="ch-price">net_amt</th>
+      <th class="ch-price">inst_mon</th><th class="ch-price">inst_fee</th>
+    </tr></table>
+    <div class="colcap fx"><span><i style="background:#6b7280"></i>시간</span><span><i style="background:#1d2b4d"></i>장소</span><span><i style="background:#0a8488"></i>상품</span><span><i style="background:#8a6d1f"></i>가격</span></div>
+    <div class="colhint" id="colhint">↓ 각 컬럼을 색깔별 축으로 모읍니다</div>
+    <div class="ax4" style="margin-top:40px">
+      <div class="a"><div class="h" style="background:#6b7280">🕐 시간</div><div class="c">시간대 비중 — 점심·평일점심(<b>직장인</b>) / 오전(<b>주부</b>) / 저녁 / 주말 · <b>recency</b></div></div>
+      <div class="a"><div class="h" style="background:#1d2b4d">📍 장소</div><div class="c">방문·동선·<b>entropy</b> · 매장 카테고리 <b>성별 TE</b></div></div>
+      <div class="a"><div class="h" style="background:#0a8488">🛍 상품</div><div class="c"><b>W2V 임베딩</b> · 브랜드 엔트로피 · <b>성별 log-odds TE</b> · tfidf</div></div>
+      <div class="a"><div class="h" style="background:#8a6d1f">💳 가격</div><div class="c">할인율·<b>무이자할부</b>·객단가·RFM·bigticket <b style="color:#0a8488">(금융행동=최대 레버)</b></div></div>
+    </div>
+    <div class="extstrip" style="margin-top:13px">
+      <div class="ico">🌐</div><div class="tt">외부 정보 피처</div>
+      <div class="dd"><b>brandext</b> — 브랜드명(에스티로더 등)에 거래 밖 지식으로 <b>성별 선호 라벨</b> 부여 (손라벨 174 + LLM 카테고리 추론, <b style="color:#0a8488">+0.0023</b>) · <b>외부 pc/corner 성별 경향</b> 매핑 (+0.0012)</div>
+    </div>
+  </div>
+  <div class="footbar fx">4축 × 다양한 기법으로 <b>수백 개 피처</b> 생성 + <b class="tl">외부 브랜드 성별 지식</b>까지 결합</div>
+</section>
+
+<!-- 4 FE 검증 최고 -->
+<section class="slide cs foot" data-meta="04 / 피처 엔지니어링 ②">
+  <div class="tag">04 <span>피처 엔지니어링 — 검증</span></div>
+  <div class="stitle fx">다양한 방법을 전수 검증 — 가장 강했던 것은?</div>
+  <div class="subtitle fx">단일 FE 기법별 OOF 기여 비교 → <b>성별 Target-Encoding + W2V</b>가 최강</div>
+  <div class="body">
+    <div class="bars">
+      <div class="bar best fx"><div class="nm">성별 log-odds TE + W2V<div class="bd">상품 카테고리의 남녀 성향을 점수화</div></div><div class="tk"><div class="fl" style="width:96%;background:linear-gradient(90deg,#0fb5ba,#0a8488)">강함 · 핵심 신호</div></div></div>
+      <div class="bar fx"><div class="nm">상호작용 (interaction)<div class="bd">장소×상품 등 축을 교차한 조합</div></div><div class="tk"><div class="fl" style="width:74%;background:#3a7afe">+기여</div></div></div>
+      <div class="bar fx"><div class="nm">W2V 브랜드/상품 임베딩<div class="bd">브랜드·상품을 벡터로 — 취향 군집</div></div><div class="tk"><div class="fl" style="width:66%;background:#42b86a">+기여</div></div></div>
+      <div class="bar fx"><div class="nm">tfidf · entropy<div class="bd">구매 다양성·집중도</div></div><div class="tk"><div class="fl" style="width:54%;background:#9b7fd4">소폭</div></div></div>
+      <div class="bar fx"><div class="nm">LDA · Mahalanobis 판별<div class="bd">통계 판별 — 빈약 데이터 전용</div></div><div class="tk"><div class="fl" style="width:20%;background:#e5392f">−0.026 유해</div></div></div>
+    </div>
+    <div class="sigsec fx">
+      <div class="sigt">이 신호가 성별을 가르는 직관 — 한 줄로</div>
+      <div class="sigrow"><span class="si">💄</span><div><b>카테고리 취향(성별 TE)</b> — 화장품·여성복 사면 <b>여성</b>, 골프·남성복·명품 사면 <b>남성</b>. '무엇을 사는지'가 가장 직접적 신호.</div></div>
+      <div class="sigrow"><span class="si">💰</span><div><b>객단가·고가품</b> — 한 번에 비싼 것(정장·시계·명품)을 사면 <b>남성</b> (객단가 10.7만 vs 여성 9.5만).</div></div>
+      <div class="sigrow"><span class="si">🧾</span><div><b>거래빈도·할인</b> — 자주 소액·세일 활용은 <b>여성</b>, 자주 안 오지만 목적성 고액 구매는 <b>남성</b>.</div></div>
+      <div class="sigrow"><span class="si">💳</span><div><b>무이자 할부</b> — 큰 구매를 할부로 쪼개는 거라 약하게 <b>남성</b>쪽 (+0.012, 단독으론 약해 카테고리와 결합해야 효과).</div></div>
+    </div>
+  </div>
+  <div class="footbar fx">같은 상품도 <b>남녀 성향이 다르다</b> — 검증으로 진짜 통하는 신호만 채택 (LDA류는 <b>유해</b>)</div>
+</section>
+
+<!-- 5 base/mega 정의 + 자동매칭 -->
+<section class="slide cs foot" data-meta="05 / base · mega · mega-A">
+  <div class="tag">05 <span>base · mega · mega-A</span></div>
+  <div class="stitle fx">base · mega · mega-A — 참조 코드 위에 우리가 확장한 피처</div>
+  <div class="subtitle fx">교수님 baseline + 작년 1등 참조 코드의 FE를 우리가 구현·확장 — <b>mega·mega-A가 우리 추가 기여</b></div>
+  <div class="body">
+    <div class="lineage fx">
+      <div class="ln prof"><div class="l">참조</div><div class="v">baseline<br>+ 1등 코드</div><div class="d">집계·W2V·TE·TFIDF 방법론</div></div>
+      <div class="ar">›</div>
+      <div class="ln ours"><div class="l">구현·확장</div><div class="v">base 521</div><div class="d">참조 방법론 497→521</div></div>
+      <div class="ar">›</div>
+      <div class="ln ours"><div class="l">우리 추가 ①</div><div class="v">mega 573</div><div class="d">+임베딩·금융·성별TE</div></div>
+      <div class="ar">›</div>
+      <div class="ln ours"><div class="l">우리 추가 ②</div><div class="v">mega-A 621</div><div class="d">+상호작용·richer</div></div>
+    </div>
+    <div class="cards fx" style="margin-top:15px">
+      <div class="card"><h3>base 521 <span style="font-size:10.5px;color:#8a909c;font-weight:700">참조 구현·확장</span></h3><p><b>교수님 baseline + 작년 1등 참조 코드</b>의 FE 방법론(집계·W2V·RFM·TE·TFIDF·entropy·환불·dwell·recency)을 우리가 <b>구현·확장</b>(497→521+).</p></div>
+      <div class="card" style="border-color:var(--teal)"><h3>mega 573 <span style="font-size:10.5px;color:var(--teal2);font-weight:800">★ 여기부터 우리 추가</span></h3><p>base에 <b>브랜드·상품 임베딩 96</b> + <b>돈 쓰는 습관 18</b>(할인·할부·객단가) + <b>성별 성향 점수 강화 36</b>.</p></div>
+      <div class="card" style="border-color:var(--teal)"><h3>mega-A 621 → <span class="teal">AG 0.7205</span></h3><p>mega에 <b>축을 교차한 상호작용 48개</b> 추가(우리 기여) — 가장 풍부. AutoGluon 단일 <b>최강 0.7205</b>.</p></div>
+    </div>
+  </div>
+  <div class="footbar fx">참조 방법론(base) 위에 <b class="tl">우리 추가분(mega·mega-A)</b> — 큰 FE 세트를 AutoGluon에 투입</div>
+</section>
+
+<!-- 6 FE×단일모델 멤버 성능 + 가중치 + FE세트 차이 -->
+<section class="slide cs foot" data-meta="06 / 멤버 · FE 세트">
+  <div class="tag">06 <span>멤버 · FE 세트</span></div>
+  <div class="stitle fx">FE × 단일모델 멤버 — 성능과 블렌드 가중치</div>
+  <div class="subtitle fx">FE 세트 × 알고리즘이 만든 <b>단일 멤버</b>들 · Caruana가 강한 멤버 위주로 가중 (#73·mh_bestblend은 이들을 합친 앙상블)</div>
+  <div class="body">
+    <div style="display:grid;grid-template-columns:1fr 292px;gap:20px;align-items:center">
+      <div class="membars" id="membars"></div>
+      <div class="fesetbox" id="fesetbox">
+        <div class="fbh">FE 세트는 어떻게 다른가</div>
+        <div class="fbi"><b>base 521</b> — 기본 4축 수제 FE</div>
+        <div class="fbi"><b>mega 573</b> — base + 임베딩·금융·성별TE</div>
+        <div class="fbi"><b>megamax 573</b> — mega의 최대 정리판 <span class="fbm">(거의 동일)</span></div>
+        <div class="fbi"><b>mega-A 621</b> — mega + 상호작용 48 <span class="fbm">(가장 풍부 · 0.7205)</span></div>
+        <div class="fbn">같은 FE라도 알고리즘(XGB·LGBM·Cat·AG)을 바꾸면 다른 멤버 → 블렌드 다양성.</div>
+      </div>
+    </div>
+  </div>
+  <div class="footbar fx">AG · megaA가 최고 비중 — 강한 단일 멤버일수록 Caruana 가중치 ↑</div>
+</section>
+
+<!-- 7 수도 라벨링 + 블렌딩 -->
+<section class="slide cs foot" data-meta="07 / 의사라벨링">
+  <div class="tag">07 <span>의사라벨링</span></div>
+  <div class="stitle fx">Pseudo-labeling — test 분포를 학습 + 과적합 방지 블렌딩</div>
+  <div class="subtitle fx">test 정보를 받아오되, pseudo 과의존을 막기 위해 <b>0.7 : 0.3</b> 블렌드</div>
+  <div class="body">
+    <div class="cards">
+      <div class="card fx"><h3>① 의사라벨링</h3><p>teacher 예측으로 test에 pseudo-label → <b>student를 재학습</b>. train만으론 못 본 <b class="teal">test 분포</b>를 학습해 새 정보 주입.</p></div>
+      <div class="card fx"><h3>② 과적합 방지 블렌딩</h3><p>pseudo만 믿으면 test에 과적합 위험 → <b>base(0.7) + pseudo(0.3)</b> rank 블렌드로 균형. base의 안정성 + pseudo의 새 정보.</p></div>
+      <div class="card fx"><h3>③ 결과</h3><div class="big">+0.0014</div><p>#120(0.7369) → <b>#126(0.7383)</b>. base를 강화할수록 0.7 비중으로 전이.</p></div>
+    </div>
+    <div class="insight fx" style="margin-top:16px"><span class="ti">핵심 공식</span> <b>제출 = rank( 0.7·rank(base) + 0.3·rank(pseudo) )</b> — 모든 결합은 순위 공간에서 (AUC는 순위에만 의존).</div>
+  </div>
+  <div class="footbar fx">CL·ridge 같은 "OOF 선택"은 nested-CV서 <b>신기루</b>, pseudo는 fold-평균이라 <b class="tl">LB로 진짜 전이</b></div>
+</section>
+
+<!-- 8 한계 봉착 -->
+<section class="slide cs foot" data-meta="08 / 한계 봉착">
+  <div class="tag">08 <span>한계 봉착</span></div>
+  <div class="stitle fx">한계 봉착 — 무엇을 더해도 <span class="red">0.7354를 못 넘다</span></div>
+  <div class="subtitle fx">단일 천장 AutoGluon <b>0.722</b> / 메타스택 0.7354 · <b>156개 시도</b>가 같은 벽에 수렴</div>
+  <div class="body">
+    <div class="failgroups fx">
+      <div class="fgrp">
+        <div class="fgh">① 다른 모델로 시도<small>전부 GBT 천장 못 넘음 / redundant</small></div>
+        <div class="fgi"><b>딥러닝 tabular</b> — FT-Trans·TabPFN·TabM·SCARF → 0.69~0.71</div>
+        <div class="fgi"><b>그래프·관계</b> — node2vec·LightGCN·kNN → frontier, +0~음수</div>
+        <div class="fgi"><b>선형·SVM·FM·NB</b> — 0.64~0.70 약함</div>
+      </div>
+      <div class="fgrp">
+        <div class="fgh">② 새 피처·정보 추가<small>강한 스택이 이미 흡수 → +0</small></div>
+        <div class="fgi"><b>FE 블록</b> — heavy·hypothesis·recency·pricepct → 스택 흡수</div>
+        <div class="fgi"><b>텍스트·임베딩</b> — TF-IDF·SBERT·SVD·NMF → 약함/포화</div>
+        <div class="fgi"><b>외부 브랜드 지식</b> — −0.0013 (내부 TE가 흡수)</div>
+      </div>
+      <div class="fgrp">
+        <div class="fgh">③ OOF 검증 함정<small>nested-CV에서 신기루로 붕괴</small></div>
+        <div class="fgi"><b>판별 통계</b> — LDA·Mahalanobis → −0.026 유해</div>
+        <div class="fgi"><b>CL·ridge OOF선택</b> — 비-nested +, nested −0.003</div>
+        <div class="fgi"><b>증강·생성</b> — adv·vime·SMOTE·cVAE → corr↑ redundant</div>
+      </div>
+    </div>
+    <div class="insight fx" style="margin-top:14px"><span class="ti">왜?</span> 성별 신호가 <b>1차원(singular) + 선물·가족 카드 라벨노이즈</b> = 환원 불가. 외부 확정 — 동일 스키마 <b>MBA 2018(8년간 0.730)</b>·작년 1등 코드 0.714 → <b>~0.73이 진짜 천장</b>처럼 보였다.</div>
+  </div>
+  <div class="footbar fx">더하기·빼기·딥·그래프·외부 — <b>전부 0.7354 벽</b>. "데이터 천장" 가설에 봉착</div>
+</section>
+
+<!-- 9 돌파 + K-fold 실험 -->
+<section class="slide cs foot" data-meta="09 / 돌파 + K실험">
+  <div class="tag">09 <span>돌파 + K실험</span></div>
+  <div class="stitle fx">돌파 — <span class="teal">Fold 수를 늘리자</span> LB 급상승, 이후 K 정밀 실험</div>
+  <div class="subtitle fx">pseudo를 <b>5→10 fold</b>로 재학습 → <b>#112 = +0.0013</b> 천장 돌파(팀 1위) · 이어 K-sweep·recency·증강</div>
+  <div class="body">
+    <div style="display:grid;grid-template-columns:340px 1fr;gap:20px;align-items:center">
+      <div class="kslider fx">
+        <div class="kread">pseudo fold <span id="kVal">10</span><span class="ar">→</span> LB <span id="kLB">0.73671</span></div>
+        <svg id="kCurve" viewBox="0 0 380 120"></svg>
+        <input id="kRange" type="range" min="5" max="50" value="10" oninput="updateK()">
+        <div class="klab"><span>K=5</span><span>10</span><span>25</span><span>50</span></div>
+        <div class="knote" id="kNote">★ 5→10 큰 점프 (+0.0013)</div>
+      </div>
+      <div class="fx">
+        <ul class="b" style="font-size:14px">
+          <li><b class="teal">돌파</b>: pseudo student를 5→10 fold로 → test 예측 = fold-평균(분산↓) → <b>#112 LB 0.7367 (+0.0013), 팀 1위</b></li>
+          <li><b>K-sweep</b>: 10→50은 +0.0001씩 미세·노이즈 수준 (K50=0.7369 최고) — 진짜는 5→10</li>
+          <li><b>과적합 검증</b>: OOF↓·LB↑ + train-OOF 갭 narrowing → <b class="teal">투과(과적합 아님)</b></li>
+          <li><b>base fold↑·recency·증강</b>: base 멤버도 10f 재학습 +0.0015 · recency 10f서 부활 · 증강 +0.0001</li>
+        </ul>
+      </div>
+    </div>
+    <div class="insight fx" style="margin-top:12px"><span class="ti">⚠️ OOF leak편향</span> 10f/5f 혼합 OOF는 절대값 신뢰 불가 → <b>모든 레버를 LB로만 검증</b>해 진짜만 채택.</div>
+  </div>
+  <div class="footbar fx">슬라이더를 움직여 K에 따른 LB 변화를 확인 — <b>5→10이 진짜, 그 이후는 노이즈</b></div>
+</section>
+
+<!-- 10 결과 과적합 2등 -->
+<section class="slide cs foot" data-meta="10 / 결과 — 셰이크">
+  <div class="tag">10 <span>결과 — 셰이크</span></div>
+  <div class="stitle fx">Public 1위 → <span class="red">Private 2위</span> — private는 멈춰 있었다</div>
+  <div class="subtitle fx">3일간 public은 <b>+0.0031</b> 올렸지만 private는 <b>+0.0008(노이즈)</b> — 우리는 public만 쫓았다</div>
+  <div class="body">
+    <div style="display:grid;grid-template-columns:1fr 358px;gap:20px;align-items:center">
+      <div class="chart-box fx"><svg id="ppChart" viewBox="0 0 640 300"></svg></div>
+      <div class="pmbox fx">
+        <div class="pmi"><b>갭-public 상관 r = +0.63</b> — 전 팀 중 최고. public을 올릴수록 갭이 커지는 <span class="red">LB 과적합 패턴</span>.</div>
+        <div class="pmi"><b>1위 팀은 r = −0.19</b> — 점수가 올라도 갭이 안 늘었다 = <b>진짜 private 향상</b>.</div>
+        <div class="pmi"><b>#112(pseudo 5→10 '돌파')부터</b> 갭이 +0.0037 → +0.0061로 누적.</div>
+        <div class="pmn">우리 private 최고 0.73257 &lt; 1위 0.73454 → <b>어떤 픽으로도 2위.</b></div>
+      </div>
+    </div>
+  </div>
+  <div class="footbar fx">우리의 '돌파'(#112)가 사실 <b>과적합의 시작</b> — public 튜닝을 멈췄어야 할 신호였다</div>
+</section>
+
+<!-- 11 교훈 -->
+<section class="slide cs foot" data-meta="11 / 교훈">
+  <div class="tag">11 <span>교훈</span></div>
+  <div class="stitle fx">이번 Competition의 교훈</div>
+  <div class="subtitle fx">2등이 가르쳐 준 것 — 정밀함, 그리고 일반화의 무게</div>
+  <div class="body">
+    <div class="lessons">
+      <div class="lesson fx"><div class="ln">1</div><div><div class="lt">"천장" 가정을 증거로 깨라</div><div class="ld">0.7354는 데이터가 아니라 <b>5-fold의 한계</b>였다. 끝까지 테스트한 것이 분기점.</div></div></div>
+      <div class="lesson fx"><div class="ln">2</div><div><div class="lt">singular 신호엔 다양성보다 정밀도</div><div class="ld">직교 멤버 추가는 AUC를 깎는다. 같은 신호를 <b>더 정확히(FE·fold↑)</b> 추정하는 것이 레버.</div></div></div>
+      <div class="lesson fx"><div class="ln">3</div><div><div class="lt">pseudo · OOF는 LB로 검증</div><div class="ld">OOF는 leak편향. fold-평균 pseudo만 진짜 전이, <b>OOF 선택 기법은 신기루</b>.</div></div></div>
+      <div class="lesson x fx"><div class="ln">4</div><div><div class="lt">public이 아니라 일반화(private)를 봤어야</div><div class="ld">우리 '돌파'(#112)는 public만 뚫었고 private은 거기서 멈췄다. <b>갭이 커지는 순간이 멈출 신호</b>였다.</div></div></div>
+    </div>
+  </div>
+  <div class="footbar fx">리더보드 1위가 아니라 — <b>셰이크를 견디는 일반화</b>가 목표여야 한다</div>
+</section>
+
+<!-- 12 감사합니다 -->
+<section class="slide center closing" data-meta="12 / 감사합니다">
+  <h2 class="fx" style="font-size:52px">발표 들어주셔서 감사합니다!</h2>
+  <div class="qa fx">김민형 · 신현빈 · 조아인 · 이두영</div>
+</section>
+
+</div></div>
+<div id="bar">
+  <button onclick="prev()">‹</button>
+  <span class="ct" id="ctr">1 / 12</span>
+  <button onclick="next()">›</button>
+  <button onclick="toggleOv()" title="목록(O)">▦</button>
+  <button onclick="document.documentElement.requestFullscreen?.()" title="전체화면(F)">⤢</button>
+</div>
+<div id="overview"><h3>슬라이드 목록 — 클릭하여 이동</h3><div id="grid"></div></div>
+<script>
+const slides=document.querySelectorAll('.slide'),total=slides.length;
+let cur=0,idle=null;
+function fit(){document.getElementById('deck').style.transform='scale('+Math.min(innerWidth/1280,innerHeight/720)+')';}
+addEventListener('resize',fit);fit();
+slides.forEach(s=>[...s.querySelectorAll('.fx')].forEach((el,k)=>el.style.setProperty('--d',(0.08+k*0.08)+'s')));
+function show(i){i=Math.max(0,Math.min(total-1,i));slides[cur].classList.remove('active');cur=i;slides[cur].classList.add('active');
+  document.getElementById('ctr').textContent=(cur+1)+' / '+total;document.getElementById('progress').style.width=((cur+1)/total*100)+'%';location.hash='#'+(cur+1);}
+function next(){show(cur+1)}function prev(){show(cur-1)}
+addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;
+  if(e.key==='ArrowRight'||e.key===' '){next();e.preventDefault();}else if(e.key==='ArrowLeft'){prev();e.preventDefault();}
+  else if(e.key==='Home')show(0);else if(e.key==='End')show(total-1);
+  else if(e.key>='1'&&e.key<='9')show(+e.key-1);else if(e.key==='f'||e.key==='F')document.documentElement.requestFullscreen?.();
+  else if(e.key==='o'||e.key==='O')toggleOv();else if(e.key==='Escape')document.getElementById('overview').classList.remove('show');});
+document.getElementById('viewport').addEventListener('click',e=>{if(e.target.closest('#bar')||e.target.closest('#overview')||e.target.closest('button')||e.target.closest('input')||e.target.closest('.kslider'))return;
+  const x=e.clientX/innerWidth;if(x<0.1)prev();else if(x>0.9)next();});
+function ri(){document.body.classList.remove('idle');clearTimeout(idle);idle=setTimeout(()=>document.body.classList.add('idle'),2800);}
+['mousemove','keydown','click'].forEach(ev=>addEventListener(ev,ri));ri();
+function toggleOv(){const o=document.getElementById('overview');o.classList.toggle('show');
+  if(o.classList.contains('show')){const g=document.getElementById('grid');g.innerHTML='';
+    slides.forEach((s,i)=>{const[n,...r]=(s.dataset.meta||'').split('/');const d=document.createElement('div');d.className='ovt';
+      d.innerHTML='<div class="n">'+n.trim()+'</div><div class="t">'+r.join('/').trim()+'</div>';d.onclick=()=>{show(i);o.classList.remove('show');};g.appendChild(d);});}}
+if(location.hash){const n=parseInt(location.hash.slice(1));if(n>=1&&n<=total)show(n-1);}
+document.getElementById('progress').style.width=((cur+1)/total*100)+'%';
+
+// 슬라이드10 — public 상승 vs private 평탄 (패인 시각화)
+(function(){const svg=document.getElementById('ppChart');if(!svg)return;
+  const L=['#92','#112','#120','#123','#126','#140'];
+  const PUB=[.7354,.7367,.7369,.7362,.7383,.7385], PRI=[.7316,.7317,.7316,.7317,.7322,.7324];
+  const W=640,H=300,x0=46,x1=W-94,y0=26,y1=H-38,yl=.7310,yh=.7392;
+  const fx=i=>x0+i/(L.length-1)*(x1-x0), fy=v=>y1-(v-yl)/(yh-yl)*(y1-y0);
+  let s='';
+  for(let v=.731;v<.7392;v+=.002){const py=fy(v);s+=`<line x1="${x0}" y1="${py}" x2="${x1}" y2="${py}" stroke="#f1f1f4"/><text x="${x0-5}" y="${py+3}" font-size="9" fill="#aaa" text-anchor="end">${v.toFixed(3)}</text>`;}
+  const ya=fy(.7345);s+=`<line x1="${x0}" y1="${ya}" x2="${x1}" y2="${ya}" stroke="#caa24a" stroke-width="1.3" stroke-dasharray="5 3"/><text x="${x1+4}" y="${ya+3}" font-size="9.3" fill="#a07a16">1위 private<tspan x="${x1+4}" dy="11">0.7345</tspan></text>`;
+  s+=`<polyline points="${PUB.map((v,i)=>fx(i)+','+fy(v)).join(' ')}" fill="none" stroke="#e5901f" stroke-width="2.6"/>`;
+  PUB.forEach((v,i)=>s+=`<circle cx="${fx(i)}" cy="${fy(v)}" r="3.6" fill="#e5901f"/>`);
+  s+=`<text x="${fx(5)+5}" y="${fy(.7385)-3}" font-size="10.5" font-weight="800" fill="#c47714">Public ↑</text>`;
+  s+=`<polyline points="${PRI.map((v,i)=>fx(i)+','+fy(v)).join(' ')}" fill="none" stroke="#7a4fd0" stroke-width="2.6"/>`;
+  PRI.forEach((v,i)=>s+=`<circle cx="${fx(i)}" cy="${fy(v)}" r="3.6" fill="#7a4fd0"/>`);
+  s+=`<text x="${fx(5)+5}" y="${fy(.7324)+12}" font-size="10.5" font-weight="800" fill="#5a36a8">Private (평탄)</text>`;
+  s+=`<line x1="${fx(1)}" y1="${y0}" x2="${fx(1)}" y2="${y1}" stroke="#e5392f" stroke-dasharray="3 2" opacity=".55"/><text x="${fx(1)}" y="${y0-7}" font-size="9.5" font-weight="800" fill="#e5392f" text-anchor="middle">#112 과적합 시작</text>`;
+  L.forEach((lb,i)=>s+=`<text x="${fx(i)}" y="${y1+15}" font-size="9" fill="#888" text-anchor="middle">${lb}</text>`);
+  svg.innerHTML=s;
+})();
+
+// 슬라이드6 — FE×단일모델 멤버 가중치 막대 + FE세트 박스
+(function(){
+  const box=document.getElementById('membars'); if(!box) return;
+  const M=[
+    {n:'AG · megaA',w:22,v:.7205,c:'#3a7afe'},
+    {n:'AG · megamax',w:14,v:.7189,c:'#3a7afe'},
+    {n:'XGB · mega',w:13,v:.7170,c:'#a07a55'},
+    {n:'LGBM · mega',w:12,v:.7165,c:'#a07a55'},
+    {n:'CatBoost · mega',w:11,v:.7160,c:'#a07a55'},
+    {n:'CatBoost · base',w:9,v:.7141,c:'#8a8f9c'},
+    {n:'XGB · base',w:8,v:.7140,c:'#8a8f9c'},
+    {n:'LGBM · base',w:7,v:.7138,c:'#8a8f9c'},
+    {n:'TabM · base',w:4,v:.7027,c:'#42b86a'},
+  ];
+  const maxW=Math.max(...M.map(m=>m.w));
+  box.innerHTML=M.map(m=>`<div class="mb"><span class="mn">${m.n}</span><span class="mt"><span class="mf" data-w="${(m.w/maxW*100).toFixed(1)}" style="background:${m.c}"></span></span><span class="mv">${m.w}% <span class="moof">· ${m.v.toFixed(4)}</span></span></div>`).join('');
+  const fills=[...box.querySelectorAll('.mf')], fbox=document.getElementById('fesetbox');
+  let tm=[];
+  function reset(){ tm.forEach(clearTimeout);tm=[]; fills.forEach(f=>f.style.width='0'); if(fbox)fbox.classList.remove('show'); }
+  function play(){ reset();
+    fills.forEach((f,i)=> tm.push(setTimeout(()=>{f.style.width=f.dataset.w+'%';},120+i*60)));
+    tm.push(setTimeout(()=>{ if(fbox)fbox.classList.add('show'); },900));
+  }
+  const sec=box.closest('section');
+  new MutationObserver(()=>{ if(sec.classList.contains('active'))play(); else reset(); }).observe(sec,{attributes:true,attributeFilter:['class']});
+  if(sec.classList.contains('active'))play();
+})();
+
+// 멤버 OOF 다양성 스캐터 (구버전 — #memChart 없으면 무시)
+(function(){const svg=document.getElementById('memChart');if(!svg)return;
+  const D=[['first_lgbm',.62,.715,'#a07a55'],['first_xgb',.66,.712,'#a07a55'],['first_cat',.64,.713,'#a07a55'],
+    ['mega_xgb',.70,.718,'#a07a55'],['mega_lgbm',.71,.716,'#a07a55'],['mega_cat',.69,.715,'#a07a55'],
+    ['AG·megaA',.55,.7205,'#3a7afe'],['AG·megamax',.58,.7155,'#3a7afe'],
+    ['TabM',.50,.703,'#42b86a'],['RealMLP',.52,.706,'#42b86a'],['임베딩',.46,.700,'#42b86a'],
+    ['외부블렌드',.62,.722,'#0fb5ba']];
+  const W=680,H=296,x0=52,x1=W-14,y0=16,y1=H-38,ax=[.42,.74],ay=[.698,.724];
+  const fx=a=>x0+(a-ax[0])/(ax[1]-ax[0])*(x1-x0),fy=f=>y1-(f-ay[0])/(ay[1]-ay[0])*(y1-y0);
+  let s=`<rect x="${x0}" y="${y0}" width="${x1-x0}" height="${y1-y0}" fill="none" stroke="#e4e4ea"/>`;
+  for(let f=.700;f<.724;f+=.005){const py=fy(f);s+=`<line x1="${x0}" y1="${py}" x2="${x1}" y2="${py}" stroke="#f3f3f6"/><text x="${x0-5}" y="${py+3}" font-size="9" fill="#aaa" text-anchor="end">${f.toFixed(3)}</text>`;}
+  s+=`<rect x="${x0}" y="${fy(.724)}" width="${x1-x0}" height="${fy(.718)-fy(.724)}" fill="#fff8d8" opacity=".5"/><text x="${x0+7}" y="${fy(.724)+12}" font-size="9.5" fill="#b58a00">강한 멤버 zone</text>`;
+  D.forEach(d=>{const[n,a,f,c]=d,px=fx(a),py=fy(f);s+=`<circle cx="${px}" cy="${py}" r="${c=='#0fb5ba'?9:6.5}" fill="${c}" fill-opacity=".85" stroke="#fff" stroke-width="1.3"/><text x="${px+10}" y="${py+3.5}" font-size="9.2" fill="#333">${n}</text>`;});
+  s+=`<text x="${(x0+x1)/2}" y="${H-6}" font-size="10" fill="#666" text-anchor="middle">← 평균 일치율 (낮을수록 다양성↑)</text>`;
+  s+=`<text x="12" y="${(y0+y1)/2}" font-size="10" fill="#666" text-anchor="middle" transform="rotate(-90 12 ${(y0+y1)/2})">OOF AUC</text>`;
+  svg.innerHTML=s;})();
+
+// pseudo K 슬라이더
+(function(){const rng=document.getElementById('kRange');if(!rng)return;
+  const G=[[5,.73540],[10,.73671],[25,.73677],[30,.73681],[40,.73682],[50,.73690]];
+  const W=380,H=120,L=34,R=12,T=12,B=20,vlo=.7350,vhi=.7372;
+  const tx=k=>L+(k-5)/45*(W-L-R),fy=v=>(H-B)-(v-vlo)/(vhi-vlo)*(H-B-T);
+  function lb(k){if(k<=5)return G[0][1];for(let i=1;i<G.length;i++)if(k<=G[i][0]){const a=G[i-1],b=G[i];return a[1]+(b[1]-a[1])*(k-a[0])/(b[0]-a[0]);}return G[5][1];}
+  function draw(ck){let s=`<line x1="${L}" y1="${H-B}" x2="${W-R}" y2="${H-B}" stroke="#ccc"/>`;
+    s+=`<polyline points="${G.map(g=>tx(g[0])+','+fy(g[1])).join(' ')}" fill="none" stroke="#0fb5ba" stroke-width="2"/>`;
+    G.forEach(g=>s+=`<circle cx="${tx(g[0])}" cy="${fy(g[1])}" r="2.6" fill="#0fb5ba"/>`);
+    const cx=tx(ck),cy=fy(lb(ck));s+=`<line x1="${cx}" y1="${T-4}" x2="${cx}" y2="${H-B}" stroke="#15151b" stroke-dasharray="3 2"/><circle cx="${cx}" cy="${cy}" r="5.5" fill="#15151b" stroke="#fff" stroke-width="1.6"/>`;
+    document.getElementById('kCurve').innerHTML=s;}
+  window.updateK=function(){const k=+rng.value,v=lb(k);document.getElementById('kVal').textContent=k;document.getElementById('kLB').textContent=v.toFixed(5);
+    const n=document.getElementById('kNote');if(k<=12){n.textContent='★ 5→10 큰 점프 (+0.0013)';n.style.color='#0a8a5f';}else{n.textContent='K↑ 미세 상승 (노이즈 수준)';n.style.color='#999';}draw(k);};
+  updateK();})();
+
+// 슬라이드3 — 3초 뒤 헤더 컬럼이 각 축 박스로 이동
+(function(){
+  const sec=document.querySelector('section[data-meta^="03 "]'); if(!sec) return;
+  const ths=[...sec.querySelectorAll('.colhead th')];
+  const boxes=[...sec.querySelectorAll('.ax4 .a')];   // 0시간 1장소 2상품 3가격
+  const ext=sec.querySelector('.extstrip'), hint=sec.querySelector('#colhint');
+  const AX={'ch-time':0,'ch-place':1,'ch-prod':2,'ch-price':3};
+  let timer=null;
+  const sc=()=>Math.min(innerWidth/1280, innerHeight/720);
+  function reset(){
+    clearTimeout(timer);
+    ths.forEach(t=>{t.style.transform='';t.style.opacity='';t.classList.remove('docked');});
+    boxes.forEach(b=>{b.style.transitionDelay='0s';b.style.opacity='0';});
+    if(ext){ext.style.transitionDelay='0s';ext.style.opacity='0';}
+    if(hint){hint.style.opacity='1';hint.textContent='↓ 잠시 후 각 컬럼이 색깔별 축으로 모입니다';}
+  }
+  function fly(){
+    const s=sc();
+    if(hint){hint.style.opacity='0';}
+    // 박스 페이드 인 (위치 고정, 페이드만)
+    boxes.forEach((b,k)=>{ b.style.transitionDelay=(k*0.05)+'s'; b.style.opacity='1'; });
+    if(ext){ ext.style.transitionDelay='0.4s'; ext.style.opacity='1'; }
+    // 축별로 묶어 dock 슬롯에 칩으로 안착 (잔상 X, 솔리드 유지)
+    const groups={0:[],1:[],2:[],3:[]};
+    ths.forEach(t=>{const cls=[...t.classList].find(c=>c in AX); if(cls!==undefined) groups[AX[cls]].push(t);});
+    let order=0;
+    [0,1,2,3].forEach(a=>{
+      const br=boxes[a].getBoundingClientRect(), n=groups[a].length;
+      groups[a].forEach((t,k)=>{
+        const tr=t.getBoundingClientRect();
+        const tgtX=br.left+(k+0.5)/n*br.width, tgtY=br.top-14*s;   // 박스 '위'
+        const dx=(tgtX-(tr.left+tr.width/2))/s, dy=(tgtY-(tr.top+tr.height/2))/s;
+        setTimeout(()=>{ t.style.transform=`translate(${dx}px,${dy}px) scale(.7)`; t.classList.add('docked'); }, order*20);
+        order++;
+      });
+    });
+    const idc=ths.find(t=>t.classList.contains('ch-id'));
+    if(idc){ idc.style.transform='translateY(38px) scale(.7)'; idc.style.opacity='0'; }
+  }
+  function play(){ reset(); timer=setTimeout(fly, 2000); }
+  new MutationObserver(()=>{ if(sec.classList.contains('active')) play(); else reset(); }).observe(sec,{attributes:true,attributeFilter:['class']});
+  if(sec.classList.contains('active')) play();
+})();
+</script>
+</body></html>
