@@ -12,7 +12,7 @@
 
 - 개별 모델 천장이 0.71~0.72인 대회에서 **4단계 앙상블로 0.738까지 +0.027**을 만들었습니다.
 - 그러나 public 리더보드에 과적합된 구조(갭–public 상관 +0.63)로 private에서 역전당했고,
-  **왜 졌는지를 1·3위 솔루션과 대조 분석**한 문서를 남겼습니다 → [`docs/KML2026S_회고_1위.md`](docs/KML2026S_회고_1위.md) (섹션 17~19)
+  **왜 졌는지를 1·3위 솔루션과 대조 분석**한 문서를 남겼습니다 → [`docs/retrospective.md`](docs/retrospective.md) (섹션 17~19)
 
 ## 🙋 내 역할 (신현빈, @hyunbean)
 
@@ -42,10 +42,10 @@
 
 ```
 docs/                  ★ 회고·발표·분석 (이 repo에서 가장 중요)
-  ├ KML2026S_회고_1위.md    회고: 협업·돌파·검증·앙상블 구조·shake-up 분석·다음 대회 청사진
-  ├ ML실험노트_초안.md      초반 EDA·베이스라인 노트
-  ├ 실험노트_템플릿.md      일일 실험노트 템플릿 (다음 대회 재사용)
-  └ 2등(우리팀)_KML성별예측_발표.html   팀 발표자료
+  ├ retrospective.md            회고: 협업·돌파·검증·앙상블 구조·shake-up 분석·다음 대회 청사진
+  ├ eda-baseline-notes.md       초반 EDA·베이스라인 노트
+  ├ experiment-log-template.md  일일 실험노트 템플릿 (다음 대회 재사용)
+  └ presentation-kml-gender.html   팀 발표자료 (2등, 우리 팀)
 setup/                 환경·실행 설정 (Colab/DLPC 셋업, 파이프라인, 팀 온보딩)
 src/                   핵심 코드 (→ src/README.md 에 모듈별 안내)
 experiments_archive/   실패/폐기 실험 (회고 근거용 보관 — 음수 결과도 기록)

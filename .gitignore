@@ -22,6 +22,9 @@ __pycache__/
 .ipynb_checkpoints/
 .DS_Store
 
+# 개인 개발환경 설정(로컬 절대경로 포함 — 커밋 금지)
+.claude/
+
 # ↑ artifacts/*.npy (folds) 와 artifacts/oof/*.npy, *.json 은 추적됨(팀 공유 대상)
 
 # OneDrive 임시
