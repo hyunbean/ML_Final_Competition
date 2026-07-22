@@ -14,6 +14,11 @@
 - 그러나 public 리더보드에 과적합된 구조(갭–public 상관 +0.63)로 private에서 역전당했고,
   **왜 졌는지를 1·3위 솔루션과 대조 분석**한 문서를 남겼습니다 → [`docs/retrospective.md`](docs/retrospective.md) (섹션 17~19)
 
+![제출별 Public/Private 궤적 — Public은 +0.0031 올랐으나 Private은 +0.0008에 그쳤다](docs/charts/01-public-vs-private.svg)
+
+> 마지막 6개 제출에서 Public은 +0.0031 올랐지만 Private은 +0.0008이었습니다. **상승분의 약 74%가 거품**이었고, 그 시작점은 "천장 돌파"라고 판단했던 fold 5→10 지점이었습니다.
+> 전체 시각 분석 → [`docs/shakeup-analysis.md`](docs/shakeup-analysis.md)
+
 ## 🙋 내 역할 (신현빈, @hyunbean)
 
 4인 팀 프로젝트에서 아래 영역을 담당했습니다.
