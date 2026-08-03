@@ -19,16 +19,6 @@
 > 마지막 6개 제출에서 Public은 +0.0031 올랐지만 Private은 +0.0008이었습니다. **상승분의 약 74%가 거품**이었고, 그 시작점은 "천장 돌파"라고 판단했던 fold 5→10 지점이었습니다.
 > 전체 시각 분석 → [`docs/shakeup-analysis.md`](docs/shakeup-analysis.md)
 
-## ⚠️ 한계 (Limitations)
-
-> 기존에 `docs/retrospective.md`(섹션 0·2·12)와 `MODEL_CARD.md`("한계"/"성능" 절)에 흩어져 있던 한계 서술을 이 절로 모았습니다.
-
-- **작은 데이터에 과포화된 피처 → 재현성 낮음.** train 30,000행 / test 19,995행에 피처 521개로, 개별 신호가 약함(단일 모델 AUC 0.71~0.72대). 왜 생겼나: 데이터 규모 대비 EDA 없이 피처를 먼저 늘렸기 때문(`docs/retrospective.md` 섹션 12-1). 고치려면: 다음 대회 EDA 체크리스트(섹션 12-2)대로 "데이터 크기 vs 피처 수 비율"을 모델링 전에 먼저 확인.
-- **Public 리더보드에 대한 과적합(public-overfit).** 최종 제출이 Public 1위(0.7385)였으나 Private 2위(0.7324)로 역전당함 — 갭–public 상관 +0.63으로, 우승팀(−0.19)과 달리 public 점수가 오를수록 private과의 갭도 커지는 구조였음. 왜 생겼나: 140회 제출로 public LB를 검증셋처럼 사용했고(`docs/retrospective.md` 섹션 17), CV−LB 갭을 추적하지 않았음. 고치려면: 모든 제출에 CV·LB·Gap을 표로 기록하고, Gap이 벌어지면 해당 제출은 채택하지 않음(섹션 17 결론).
-- **거짓 "성능 천장" 판단.** 0.7354를 며칠간 "데이터 천장"으로 오판 — 실제로는 fold 5개일 때의 variance 한계였음(`docs/retrospective.md` 섹션 2·3). 왜 생겼나: fold별 AUC 편차(안정성)를 EDA 단계에서 확인하지 않아 "fold 수가 곧 variance 레버"라는 사실을 늦게 발견함. 고치려면: 모델링 전 fold/seed별 AUC 표준편차를 확인하는 EDA 체크리스트 항목을 필수화(섹션 12-2 #9).
-- **피처 누수(leakage) 위험 상존, 사후 검증에 의존.** 신규 피처 `lb_g6_skew`가 전체 train으로 계산되어 성능이 가짜로(+0.005) 부풀려진 사례가 실제로 발견됨(`docs/retrospective.md` 섹션 4) — KFold OOF로 재계산 후 실제 이득은 +0.00156로 축소. 왜 생겼나: 신규 피처를 fold 분리 없이 전체 데이터로 먼저 계산하는 습관 때문. 고치려면: 모든 신규 피처는 fold별 OOF 계산을 기본 절차로 강제(체크리스트화).
-- **표준 신용평가 지표(KS/Gini/PSI/lift) 부재.** 이 프로젝트는 ROC-AUC(순위 지표) 단일 기준으로만 검증됨 — KS/Gini/PSI/lift는 계산되지 않았고 README/docs 어디에도 기록되어 있지 않음(`MODEL_CARD.md` "성능" 절). 왜 생겼나: 대회 채점 기준 자체가 ROC-AUC였고, 신용평가 실무 지표는 요구되지 않았음. 고치려면: 신용/리스크 맥락에 준용하려는 시도가 있다면 이 지표들을 별도로 새로 산출(추정치로 대체하지 않음).
-
 ## 🙋 내 역할 (신현빈, @hyunbean)
 
 4인 팀 프로젝트에서 아래 영역을 담당했습니다.
@@ -80,3 +70,17 @@ artifacts/             고정 folds·custid 정렬 npy, 팀 공유 OOF 예측
 3. **CV−LB 갭 추이를 그려라.** 갭이 일정하면 robust, 벌어지면 public 튜닝 중단 신호.
 4. **"천장"은 거의 항상 가설.** 며칠간 데이터 천장으로 단정했던 0.7354는 fold-5 variance 한계였다 — 안 건드린 축(fold/seed/앙상블 구조)부터 의심할 것.
 5. **교훈에는 적용 범위가 있다.** pseudo 회피·pruning 등은 "작고 분포차 큰 이 대회"의 조건부 처방 — 다음 대회는 adversarial validation으로 분포차부터 확인 후 분기 (회고 섹션 19).
+
+## ⚠️ 한계 (Limitations)
+
+- **작은 데이터에 과포화된 피처 → 재현성 낮음** — train 30,000행에 피처 521개로 개별 신호가 약함(단일 모델 AUC 0.71~0.72대).
+- **Public 리더보드에 대한 과적합** — 갭–public 상관 +0.63(우승팀 −0.19). 140회 제출로 public LB를 검증셋처럼 사용했고 CV−LB 갭을 추적하지 않았음.
+- **거짓 "성능 천장" 판단** — 0.7354를 며칠간 데이터 천장으로 오판. 실제로는 fold 5개일 때의 variance 한계였음.
+- **피처 누수(leakage) 위험 상존** — `lb_g6_skew`가 전체 train으로 계산돼 성능이 +0.005 부풀려진 사례가 실제로 발견됨. KFold OOF 재계산 후 실제 이득은 +0.00156.
+- **표준 신용평가 지표(KS/Gini/PSI/lift) 부재** — 대회 채점 기준이 ROC-AUC였기에 이 지표들은 계산되지 않았음. 추정치로 대체하지 않음.
+
+📄 **각 항목의 "왜 생겼나 / 고치려면" 전문:** [`docs/limitations.md`](docs/limitations.md) · 배경 [`docs/retrospective.md`](docs/retrospective.md) (섹션 0·2·4·12·17) · [`MODEL_CARD.md`](MODEL_CARD.md)
+
+## License
+
+[MIT](LICENSE)
