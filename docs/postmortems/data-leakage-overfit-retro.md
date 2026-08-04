@@ -31,7 +31,7 @@ KFold 방식의 OOF(out-of-fold) 계산으로 해당 피처를 재계산했습�
 ## B. Public 1위 → Private 2위 역전 (public-overfit)
 
 ### 발생 현상 (What Happened)
-최종 제출 기준 Public 리더보드 0.7385(10팀 중 1위)였으나, Private 리더보드에서는 0.7324로 2위로 밀려났습니다(1위 팀 Private 0.7345). 출처: `README.md` "📊 결과" 표, `docs/retrospective.md` 섹션 17 표.
+최종 제출 기준 Public 리더보드 0.7385(1위)였으나, Private 리더보드에서는 0.7324로 2위로 밀려났습니다(1위 팀 Private 0.7345). 출처: `README.md` "📊 결과" 표, `docs/retrospective.md` 섹션 17 표.
 
 ### 발견 경위 (How It Was Found)
 대회 종료 후 Private 리더보드가 공개되며 순위 역전이 확인되었고, 이후 `docs/retrospective.md` 섹션 17~19와 `docs/shakeup-analysis.md`에서 1위·3위 팀의 공개 발표자료와 자체 제출 이력(140회)을 비교 분석했습니다.
